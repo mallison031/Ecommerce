@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ProductDetailView } from "@/components/product-detail-view";
 import { ProductCard, ProductData } from "@/components/product-card";
+import { ProductReviewsSection } from "@/components/product-reviews-section";
+import { getProductReviewsAndSummary } from "@/lib/reviews";
 import type { Metadata } from "next";
 
 export async function generateMetadata({
@@ -54,6 +56,9 @@ export default async function ProductDetailPage({
     take: 4,
   });
 
+  // Fetch reviews and social proof summary
+  const { reviews, summary } = await getProductReviewsAndSummary(product.id);
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-16">
       {/* Breadcrumbs */}
@@ -72,7 +77,17 @@ export default async function ProductDetailPage({
       </nav>
 
       {/* Main Product Detail Section */}
-      <ProductDetailView product={product} sector={product.sector} />
+      <ProductDetailView product={product} sector={product.sector} ratingSummary={summary} />
+
+      {/* Customer Reviews & UGC Section */}
+      <div id="reviews-section">
+        <ProductReviewsSection
+          productId={product.id}
+          productName={product.name}
+          initialReviews={reviews}
+          initialSummary={summary}
+        />
+      </div>
 
       {/* Related Products Section */}
       {relatedProducts.length > 0 && (
