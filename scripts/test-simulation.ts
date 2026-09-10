@@ -583,6 +583,94 @@ async function runTests() {
   assert(couponCheckoutData.totalKobo === (product.price_kobo - expectedDiscount) + 250000, "Final order total reflects product price minus coupon discount plus shipping");
   console.log();
 
+  // --- TEST 14: Customer Product Reviews, Star Ratings & Photo UGC Engine ---
+  console.log("--- TEST 14: Customer Product Reviews, Star Ratings & Photo UGC Engine ---");
+  // 1. Fetch reviews & summary for product
+  const getReviewsRes = await fetch(`${BASE_URL}/api/products/${product.id}/reviews`);
+  assert(getReviewsRes.status === 200, "Product reviews GET returns HTTP 200");
+  const getReviewsData = await getReviewsRes.json();
+  assert(getReviewsData.success === true, "Product reviews API reports success: true");
+  assert(typeof getReviewsData.summary.averageRating === "number", "Reviews summary includes averageRating");
+  assert(typeof getReviewsData.summary.totalReviews === "number", "Reviews summary includes totalReviews");
+  assert(getReviewsData.summary.ratingDistribution[5] !== undefined, "Rating distribution includes 5-star bucket");
+
+  // 2. Rating boundary validation (reject > 5 stars)
+  const invalidRatingRes = await fetch(`${BASE_URL}/api/products/${product.id}/reviews`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customerName: "Anonymous",
+      customerEmail: "anon@example.com",
+      rating: 8,
+      comment: "Invalid star rating test",
+    }),
+  });
+  assert(invalidRatingRes.status === 400, "Review submission rejects rating > 5 with HTTP 400");
+
+  // 3. Guest review submission (is_verified_buyer === false)
+  const guestReviewRes = await fetch(`${BASE_URL}/api/products/${product.id}/reviews`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customerName: "New Shopper",
+      customerEmail: `guest_${Date.now()}@example.com`,
+      rating: 4,
+      headline: "Good initial impression",
+      comment: "Looks very nice online, considering ordering for my upcoming event.",
+      photoUrl: "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=400",
+    }),
+  });
+  assert(guestReviewRes.status === 201, "Guest review creation returns HTTP 201");
+  const guestReviewData = await guestReviewRes.json();
+  assert(guestReviewData.review.is_verified_buyer === false, "Unpurchased customer email correctly flagged is_verified_buyer: false");
+  assert(guestReviewData.review.photo_url !== null, "Photo UGC URL successfully stored with review");
+
+  // 4. Verified buyer review submission (is_verified_buyer === true)
+  const buyerReviewRes = await fetch(`${BASE_URL}/api/products/${product.id}/reviews`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customerName: checkoutPayload.name,
+      customerEmail: checkoutPayload.email,
+      rating: 5,
+      headline: "Fantastic quality & fast dispatch",
+      comment: "Item arrived exactly as pictured and packaging was exceptional. Highly recommend!",
+    }),
+  });
+  assert(buyerReviewRes.status === 201, "Buyer review creation returns HTTP 201");
+  const buyerReviewData = await buyerReviewRes.json();
+  assert(buyerReviewData.review.is_verified_buyer === true, "Paid customer email correctly awarded is_verified_buyer: true");
+
+  // 5. Helpful vote increment
+  const helpfulRes = await fetch(`${BASE_URL}/api/products/${product.id}/reviews/${buyerReviewData.review.id}/helpful`, {
+    method: "POST",
+  });
+  assert(helpfulRes.status === 200, "Review helpful vote returns HTTP 200");
+  const helpfulData = await helpfulRes.json();
+  assert(helpfulData.helpfulVotes === 1, "Helpful vote incremented to 1");
+
+  // 6. Admin Reviews Moderation API
+  const adminReviewsGetRes = await fetch(`${BASE_URL}/api/admin/reviews`);
+  assert(adminReviewsGetRes.status === 200, "Admin reviews GET returns HTTP 200");
+  const adminReviewsGetData = await adminReviewsGetRes.json();
+  assert(adminReviewsGetData.success === true, "Admin reviews API reports success: true");
+  assert(adminReviewsGetData.metrics.totalReviews >= 1, "Admin reviews metrics report total reviews");
+  assert(adminReviewsGetData.metrics.verifiedCount >= 1, "Admin reviews metrics track verified buyers");
+
+  // Moderation status toggle (Hide review)
+  const moderateRes = await fetch(`${BASE_URL}/api/admin/reviews`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      reviewId: guestReviewData.review.id,
+      isApproved: false,
+    }),
+  });
+  assert(moderateRes.status === 200, "Admin review moderation PATCH returns HTTP 200");
+  const moderateData = await moderateRes.json();
+  assert(moderateData.review.is_approved === false, "Admin successfully hid review from storefront");
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");

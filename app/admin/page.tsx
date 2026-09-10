@@ -25,6 +25,11 @@ import {
   Zap,
   Plus,
   Sparkles,
+  Star,
+  ShieldCheck,
+  Trash2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 interface Order {
@@ -109,7 +114,7 @@ interface AbandonedOrder {
 }
 
 export default function AdminDashboardPage() {
-  const [activeTab, setActiveTab] = useState<"orders" | "sales" | "notifications" | "tickets" | "abandoned" | "promotions">("orders");
+  const [activeTab, setActiveTab] = useState<"orders" | "sales" | "notifications" | "tickets" | "abandoned" | "promotions" | "reviews">("orders");
   const [orders, setOrders] = useState<Order[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -161,6 +166,20 @@ export default function AdminDashboardPage() {
   const [newCouponLimit, setNewCouponLimit] = useState<string>("");
   const [submittingCoupon, setSubmittingCoupon] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
+
+  // Customer Reviews & Moderation State
+  const [adminReviews, setAdminReviews] = useState<any[]>([]);
+  const [reviewMetrics, setReviewMetrics] = useState({
+    totalReviews: 0,
+    approvedCount: 0,
+    pendingCount: 0,
+    verifiedCount: 0,
+    averageStoreRating: 5.0,
+  });
+  const [reviewFilter, setReviewFilter] = useState<"all" | "approved" | "pending">("all");
+  const [loadingReviews, setLoadingReviews] = useState(false);
+  const [togglingReviewId, setTogglingReviewId] = useState<string | null>(null);
+  const [adminPhotoZoom, setAdminPhotoZoom] = useState<string | null>(null);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -268,10 +287,60 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const fetchAdminReviews = async () => {
+    setLoadingReviews(true);
+    try {
+      const url = reviewFilter !== "all" ? `/api/admin/reviews?status=${reviewFilter}` : "/api/admin/reviews";
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.success) {
+        setAdminReviews(data.reviews);
+        setReviewMetrics(data.metrics);
+      }
+    } catch (e) {
+      console.error("Failed fetching reviews:", e);
+    } finally {
+      setLoadingReviews(false);
+    }
+  };
+
+  const handleToggleReviewApproval = async (reviewId: string, currentApproval: boolean) => {
+    setTogglingReviewId(reviewId);
+    try {
+      const res = await fetch("/api/admin/reviews", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reviewId, isApproved: !currentApproval }),
+      });
+      if (res.ok) {
+        await fetchAdminReviews();
+      }
+    } catch (e) {
+      console.error("Failed updating review approval:", e);
+    } finally {
+      setTogglingReviewId(null);
+    }
+  };
+
+  const handleDeleteReview = async (reviewId: string) => {
+    if (!confirm("Are you sure you want to permanently delete this customer review?")) return;
+    try {
+      const res = await fetch(`/api/admin/reviews?id=${reviewId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        await fetchAdminReviews();
+      }
+    } catch (e) {
+      console.error("Failed deleting review:", e);
+    }
+  };
+
   useEffect(() => {
     fetchOrders();
     fetchAbandoned();
     fetchCoupons();
+    fetchAdminReviews();
     if (activeTab === "notifications") {
       fetchLogs();
     }
@@ -284,7 +353,10 @@ export default function AdminDashboardPage() {
     if (activeTab === "promotions") {
       fetchCoupons();
     }
-  }, [statusFilter, ticketFilter, abandonedFilter, activeTab]);
+    if (activeTab === "reviews") {
+      fetchAdminReviews();
+    }
+  }, [statusFilter, ticketFilter, abandonedFilter, reviewFilter, activeTab]);
 
   const handleRunSweep = async () => {
     setRunningSweep(true);
@@ -560,6 +632,21 @@ export default function AdminDashboardPage() {
           {couponStats.activeCoupons > 0 && (
             <span className="bg-pink-100 text-pink-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
               {couponStats.activeCoupons}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab("reviews")}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "reviews"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-400 hover:text-slate-700"
+          }`}
+        >
+          <Star className="w-4 h-4 text-amber-500 fill-amber-500" /> Customer Reviews ({reviewMetrics.totalReviews})
+          {reviewMetrics.pendingCount > 0 && (
+            <span className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+              {reviewMetrics.pendingCount} pending
             </span>
           )}
         </button>
@@ -1518,6 +1605,259 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Customer Reviews & Moderation */}
+      {activeTab === "reviews" && (
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[10px] font-bold text-amber-800 uppercase tracking-wider mb-1">
+                <Star className="w-3 h-3 fill-amber-500 text-amber-500" /> Customer Social Proof & UGC
+              </div>
+              <h3 className="text-base font-bold text-slate-900">Product Reviews & Customer UGC Moderation</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Review, verify, and moderate customer testimonials and uploaded product photos across all sectors.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={fetchAdminReviews}
+                disabled={loadingReviews}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 transition-colors"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingReviews ? "animate-spin" : ""}`} /> Refresh
+              </button>
+            </div>
+          </div>
+
+          {/* KPI Metrics */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <span className="text-xs font-medium text-slate-500">Total Reviews</span>
+              <p className="text-lg font-bold text-slate-900 mt-1">{reviewMetrics.totalReviews}</p>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <span className="text-xs font-medium text-slate-500">Average Store Rating</span>
+              <div className="flex items-center gap-1.5 mt-1">
+                <p className="text-lg font-bold text-amber-600">{reviewMetrics.averageStoreRating.toFixed(1)}</p>
+                <div className="flex text-amber-400">
+                  <Star className="w-4 h-4 fill-amber-400" />
+                </div>
+              </div>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <span className="text-xs font-medium text-slate-500">Verified Buyers</span>
+              <p className="text-lg font-bold text-emerald-600 mt-1">
+                {reviewMetrics.verifiedCount} ({reviewMetrics.totalReviews > 0 ? Math.round((reviewMetrics.verifiedCount / reviewMetrics.totalReviews) * 100) : 0}%)
+              </p>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <span className="text-xs font-medium text-slate-500">Approved Reviews</span>
+              <p className="text-lg font-bold text-indigo-600 mt-1">{reviewMetrics.approvedCount}</p>
+            </div>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500">Filter:</span>
+            <button
+              onClick={() => setReviewFilter("all")}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                reviewFilter === "all" ? "bg-slate-900 text-white" : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              All ({reviewMetrics.totalReviews})
+            </button>
+            <button
+              onClick={() => setReviewFilter("approved")}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                reviewFilter === "approved" ? "bg-slate-900 text-white" : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              Approved ({reviewMetrics.approvedCount})
+            </button>
+            <button
+              onClick={() => setReviewFilter("pending")}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                reviewFilter === "pending" ? "bg-slate-900 text-white" : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              Pending / Hidden ({reviewMetrics.pendingCount})
+            </button>
+          </div>
+
+          {/* Reviews Moderation Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  Customer Testimonials ({adminReviews.length})
+                </h4>
+              </div>
+              {loadingReviews && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase text-slate-500 tracking-wider">
+                  <tr>
+                    <th className="p-3.5">Customer</th>
+                    <th className="p-3.5">Product</th>
+                    <th className="p-3.5">Rating</th>
+                    <th className="p-3.5">Review Feedback</th>
+                    <th className="p-3.5">Photo UGC</th>
+                    <th className="p-3.5">Status</th>
+                    <th className="p-3.5 text-right">Moderation</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {adminReviews.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-slate-400">
+                        No customer reviews found.
+                      </td>
+                    </tr>
+                  ) : (
+                    adminReviews.map((rev) => (
+                      <tr key={rev.id} className="hover:bg-slate-50/50">
+                        <td className="p-3.5 whitespace-nowrap">
+                          <div className="font-bold text-slate-900">{rev.customer_name}</div>
+                          <div className="text-[11px] text-slate-400">{rev.customer_email}</div>
+                          {rev.is_verified_buyer ? (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded mt-0.5 border border-emerald-200">
+                              <ShieldCheck className="w-3 h-3 text-emerald-600" /> Verified Buyer
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-400">Store Guest</span>
+                          )}
+                        </td>
+                        <td className="p-3.5 max-w-[180px]">
+                          <div className="font-semibold text-slate-900 truncate" title={rev.product.name}>
+                            {rev.product.name}
+                          </div>
+                          <span className="text-[10px] uppercase font-bold text-pink-600">
+                            {rev.product.sector.name}
+                          </span>
+                        </td>
+                        <td className="p-3.5 whitespace-nowrap">
+                          <div className="flex items-center gap-0.5">
+                            {[1, 2, 3, 4, 5].map((s) => (
+                              <Star
+                                key={s}
+                                className={`w-3 h-3 ${
+                                  s <= rev.rating ? "text-amber-400 fill-amber-400" : "text-slate-200"
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-700 mt-0.5 block">
+                            {rev.rating} / 5 Stars
+                          </span>
+                        </td>
+                        <td className="p-3.5 max-w-xs">
+                          {rev.headline && (
+                            <div className="font-bold text-slate-900 truncate">{rev.headline}</div>
+                          )}
+                          <p className="text-[11px] text-slate-600 line-clamp-2">{rev.comment}</p>
+                          <span className="text-[10px] text-slate-400 block mt-0.5">
+                            {new Date(rev.created_at).toLocaleDateString("en-NG", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })} · {rev.helpful_votes} helpful votes
+                          </span>
+                        </td>
+                        <td className="p-3.5">
+                          {rev.photo_url ? (
+                            <button
+                              type="button"
+                              onClick={() => setAdminPhotoZoom(rev.photo_url)}
+                              className="w-10 h-10 rounded-lg overflow-hidden border border-slate-200 block hover:scale-105 transition-transform"
+                            >
+                              <img src={rev.photo_url} alt="" className="w-full h-full object-cover" />
+                            </button>
+                          ) : (
+                            <span className="text-slate-300 text-[11px]">No photo</span>
+                          )}
+                        </td>
+                        <td className="p-3.5 whitespace-nowrap">
+                          {rev.is_approved ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <CheckCircle className="w-3 h-3" /> Published
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                              Hidden
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3.5 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              disabled={togglingReviewId === rev.id}
+                              onClick={() => handleToggleReviewApproval(rev.id, rev.is_approved)}
+                              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                                rev.is_approved
+                                  ? "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                                  : "bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                              }`}
+                              title={rev.is_approved ? "Hide from Storefront" : "Approve & Publish"}
+                            >
+                              {rev.is_approved ? (
+                                <>
+                                  <EyeOff className="w-3 h-3" /> Hide
+                                </>
+                              ) : (
+                                <>
+                                  <Eye className="w-3 h-3" /> Approve
+                                </>
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteReview(rev.id)}
+                              className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                              title="Delete review"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Photo Zoom Modal */}
+      {adminPhotoZoom && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+          onClick={() => setAdminPhotoZoom(null)}
+        >
+          <div className="relative max-w-xl max-h-[85vh] rounded-2xl overflow-hidden bg-black shadow-2xl">
+            <button
+              type="button"
+              onClick={() => setAdminPhotoZoom(null)}
+              className="absolute top-3 right-3 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <img
+              src={adminPhotoZoom}
+              alt="Enlarged customer photo review"
+              className="w-full h-full object-contain max-h-[80vh]"
+            />
           </div>
         </div>
       )}

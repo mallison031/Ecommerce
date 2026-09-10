@@ -63,6 +63,7 @@ model Product {
   image_urls  String[]
   is_active   Boolean     @default(true)
   order_items OrderItem[]
+  reviews     ProductReview[]
   created_at  DateTime    @default(now())
   updated_at  DateTime    @updatedAt
 
@@ -219,4 +220,26 @@ model MessageNotificationLog {
   @@index([order_id])
   @@index([channel])
   @@index([status])
+}
+
+model ProductReview {
+  id                String   @id @default(cuid())
+  product_id        String
+  product           Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  customer_name     String
+  customer_email    String
+  rating            Int      // 1 to 5 stars
+  headline          String?
+  comment           String
+  photo_url         String?
+  is_verified_buyer Boolean  @default(false)
+  is_approved       Boolean  @default(true)
+  helpful_votes     Int      @default(0)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  @@index([product_id])
+  @@index([rating])
+  @@index([is_approved])
+  @@index([created_at])
 }

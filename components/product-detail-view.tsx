@@ -14,6 +14,7 @@ import {
   Plus,
   Minus,
   Sparkles,
+  Star,
 } from "lucide-react";
 import { NIGERIAN_STATES, calculateShippingFee } from "@/lib/shipping";
 
@@ -31,9 +32,14 @@ interface ProductDetailViewProps {
     name: string;
     slug: string;
   };
+  ratingSummary?: {
+    averageRating: number;
+    totalReviews: number;
+    verifiedBuyersCount: number;
+  };
 }
 
-export function ProductDetailView({ product, sector }: ProductDetailViewProps) {
+export function ProductDetailView({ product, sector, ratingSummary }: ProductDetailViewProps) {
   const { addItem } = useCart();
   const router = useRouter();
 
@@ -137,6 +143,35 @@ export function ProductDetailView({ product, sector }: ProductDetailViewProps) {
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
             {product.name}
           </h1>
+
+          {ratingSummary && ratingSummary.totalReviews > 0 && (
+            <a
+              href="#reviews-section"
+              className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-slate-900 group"
+            >
+              <div className="flex items-center gap-0.5 text-amber-400">
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <Star
+                    key={s}
+                    className={`w-3.5 h-3.5 ${
+                      s <= Math.round(ratingSummary.averageRating)
+                        ? "fill-amber-400 text-amber-400"
+                        : "text-slate-200"
+                    }`}
+                  />
+                ))}
+              </div>
+              <span className="text-slate-900 font-bold">{ratingSummary.averageRating.toFixed(1)}</span>
+              <span className="text-slate-400 group-hover:underline">
+                ({ratingSummary.totalReviews} {ratingSummary.totalReviews === 1 ? "review" : "reviews"})
+              </span>
+              {ratingSummary.verifiedBuyersCount > 0 && (
+                <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 font-bold">
+                  <ShieldCheck className="w-2.5 h-2.5 text-emerald-600" /> Verified Buyers
+                </span>
+              )}
+            </a>
+          )}
 
           <div className="flex items-center gap-4">
             <span className="text-2xl sm:text-3xl font-bold text-slate-900">
