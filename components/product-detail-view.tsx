@@ -15,6 +15,7 @@ import {
   Minus,
   Sparkles,
 } from "lucide-react";
+import { NIGERIAN_STATES, calculateShippingFee } from "@/lib/shipping";
 
 interface ProductDetailViewProps {
   product: {
@@ -41,6 +42,12 @@ export function ProductDetailView({ product, sector }: ProductDetailViewProps) {
   );
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
+  const [estimateState, setEstimateState] = useState<string>("Lagos");
+
+  const estimateShipping = calculateShippingFee({
+    state: estimateState,
+    subtotalKobo: product.price_kobo * quantity,
+  });
 
   const isOutOfStock = product.stock_qty <= 0;
 
@@ -229,22 +236,52 @@ export function ProductDetailView({ product, sector }: ProductDetailViewProps) {
           </a>
         </div>
 
-        {/* Delivery & Security Badges */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4 border-t border-slate-100 text-xs text-slate-600">
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200/60">
-            <Truck className="w-4 h-4 text-slate-700 shrink-0 mt-0.5" />
-            <div>
-              <span className="font-bold text-slate-900">Swift Courier Dispatch</span>
-              <p className="text-[11px] text-slate-500 mt-0.5">Lagos same-day / 24-48h, Nationwide 2-5 days</p>
+        {/* Interactive Delivery Estimator & Security */}
+        <div className="space-y-3 pt-4 border-t border-slate-100 text-xs text-slate-600">
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                <Truck className="w-4 h-4 text-slate-700" />
+                <span>Delivery Estimator</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] text-slate-500">Deliver to:</span>
+                <select
+                  value={estimateState}
+                  onChange={(e) => setEstimateState(e.target.value)}
+                  className="px-2 py-0.5 text-xs border border-slate-300 rounded-md bg-white font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                >
+                  {NIGERIAN_STATES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-slate-600 text-[11px] pt-1.5 border-t border-slate-200/60">
+              <span>SLA ({estimateState}):</span>
+              <span className="font-semibold text-slate-900">{estimateShipping.deliverySla}</span>
+            </div>
+
+            <div className="flex items-center justify-between text-slate-600 text-[11px]">
+              <span>Delivery Fee:</span>
+              <span className="font-bold text-slate-900">
+                {estimateShipping.isFreeDelivery ? (
+                  <span className="text-emerald-600 uppercase">FREE DELIVERY</span>
+                ) : (
+                  formatKoboToNaira(estimateShipping.shippingFeeKobo)
+                )}
+              </span>
             </div>
           </div>
 
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200/60">
-            <ShieldCheck className="w-4 h-4 text-slate-700 shrink-0 mt-0.5" />
-            <div>
-              <span className="font-bold text-slate-900">Paystack Verified</span>
-              <p className="text-[11px] text-slate-500 mt-0.5">Cards, USSD & Instant Bank Transfer</p>
-            </div>
+          <div className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-slate-200/70 text-[11px]">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="text-slate-600">
+              Secured Checkout via <strong>Paystack</strong> • Cards, USSD & Instant Bank Transfer
+            </span>
           </div>
         </div>
       </div>
