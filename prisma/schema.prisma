@@ -77,11 +77,13 @@ model Customer {
   name                String
   phone               String
   email               String   @unique
-  whatsapp_opt_in     Boolean  @default(false)
+  whatsapp_opt_in     Boolean           @default(false)
   whatsapp_phone_e164 String?
   orders              Order[]
-  created_at          DateTime @default(now())
-  updated_at          DateTime @updatedAt
+  addresses           CustomerAddress[]
+  sessions            CustomerSession[]
+  created_at          DateTime          @default(now())
+  updated_at          DateTime          @updatedAt
 
   @@index([email])
   @@index([whatsapp_phone_e164])
@@ -272,5 +274,48 @@ model StockWaitlist {
 
   @@index([product_id])
   @@index([email])
+}
+
+model CustomerAddress {
+  id             String   @id @default(cuid())
+  customer_id    String
+  customer       Customer @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  label          String   @default("Home") // e.g. "Home", "Office", "Pick-up"
+  recipient_name String
+  phone          String
+  street_address String
+  city           String?
+  state          String   // Nigerian State e.g. Lagos, Abuja, Rivers
+  lga            String?  // Local Government Area
+  is_default     Boolean  @default(false)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@index([customer_id])
+  @@index([is_default])
+}
+
+model CustomerAuthCode {
+  id         String   @id @default(cuid())
+  email      String
+  code       String
+  expires_at DateTime
+  used       Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  @@index([email])
+  @@index([code])
+}
+
+model CustomerSession {
+  id          String   @id @default(cuid())
+  customer_id String
+  customer    Customer @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  token       String   @unique
+  expires_at  DateTime
+  created_at  DateTime @default(now())
+
+  @@index([customer_id])
+  @@index([token])
 }
 

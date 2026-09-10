@@ -960,6 +960,149 @@ async function runTests() {
   assert(noMatchData.totalCount === 0, "Total count is zero for unmatched search");
   console.log();
 
+  // ==========================================
+  // TEST 19: CUSTOMER ACCOUNT, OTP AUTH, RE-ORDER & SAVED ADDRESSES
+  // ==========================================
+  console.log("--- TEST 19: Customer Account, OTP Auth, Re-Order & Saved Addresses ---");
+
+  const accountTestEmail = `customer-${Date.now()}@example.ng`;
+
+  // 1. Send OTP Request
+  const otpRes = await fetch(`${BASE_URL}/api/customer/auth/send-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: accountTestEmail,
+      name: "Chisom Balogun",
+      phone: "08039991122",
+    }),
+  });
+  assert(otpRes.status === 200, "Send OTP endpoint returns HTTP 200");
+  const otpData = await otpRes.json();
+  assert(otpData.success === true, "Send OTP reports success: true");
+  assert(typeof otpData.otp === "string" && otpData.otp.length === 6, "OTP is 6-digit code");
+
+  // 2. Verify OTP & Issue Session
+  const verifyRes = await fetch(`${BASE_URL}/api/customer/auth/verify-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: accountTestEmail,
+      code: otpData.otp,
+    }),
+  });
+  assert(verifyRes.status === 200, "Verify OTP endpoint returns HTTP 200");
+  const verifyData = await verifyRes.json();
+  assert(verifyData.success === true, "Verify OTP reports success: true");
+  assert(typeof verifyData.token === "string" && verifyData.token.length > 20, "Session token issued");
+  assert(verifyData.customer.email === accountTestEmail, "Authenticated customer email matches");
+
+  const authBearer = verifyData.token;
+  const authHeaders = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${authBearer}`,
+  };
+
+  // 3. Fetch Customer Profile & Dashboard Data
+  const profileRes = await fetch(`${BASE_URL}/api/customer/profile`, {
+    headers: authHeaders,
+  });
+  assert(profileRes.status === 200, "Customer profile endpoint returns HTTP 200");
+  const profileData = await profileRes.json();
+  assert(profileData.success === true, "Profile endpoint reports success: true");
+  assert(profileData.customer.name === "Chisom Balogun", "Profile returns customer name");
+  assert(Array.isArray(profileData.orders), "Profile includes orders array");
+  assert(Array.isArray(profileData.addresses), "Profile includes addresses array");
+  assert(profileData.stats !== undefined, "Profile includes account stats");
+
+  // 4. Add Saved Nigerian Delivery Address
+  const addAddressRes = await fetch(`${BASE_URL}/api/customer/addresses`, {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({
+      label: "Lekki Residence",
+      recipient_name: "Chisom Balogun",
+      phone: "08039991122",
+      street_address: "Plot 14 Admiralty Way, Lekki Phase 1",
+      state: "Lagos",
+      lga: "Eti-Osa",
+      is_default: true,
+    }),
+  });
+  assert(addAddressRes.status === 201, "Add address endpoint returns HTTP 201 Created");
+  const addAddressData = await addAddressRes.json();
+  assert(addAddressData.success === true, "Add address reports success: true");
+  assert(addAddressData.address.is_default === true, "First address is default");
+  assert(addAddressData.address.state === "Lagos", "Saved address state is Lagos");
+  const addressId = addAddressData.address.id;
+
+  // 5. Update Address
+  const updateAddressRes = await fetch(`${BASE_URL}/api/customer/addresses/${addressId}`, {
+    method: "PATCH",
+    headers: authHeaders,
+    body: JSON.stringify({
+      label: "Victoria Island Office",
+    }),
+  });
+  assert(updateAddressRes.status === 200, "Update address endpoint returns HTTP 200");
+  const updateAddressData = await updateAddressRes.json();
+  assert(updateAddressData.address.label === "Victoria Island Office", "Address label updated");
+
+  // 6. 1-Click Re-order Verification
+  if (paidOrder) {
+    // Link paidOrder to this authenticated customer for test
+    await prisma.order.update({
+      where: { id: paidOrder.id },
+      data: { customer_id: verifyData.customer.id },
+    });
+
+    const reorderRes = await fetch(`${BASE_URL}/api/customer/reorder/${paidOrder.id}`, {
+      method: "POST",
+      headers: authHeaders,
+    });
+    assert(reorderRes.status === 200, "1-Click reorder endpoint returns HTTP 200");
+    const reorderData = await reorderRes.json();
+    assert(reorderData.success === true, "Reorder reports success: true");
+    assert(Array.isArray(reorderData.reorderItems), "Reorder returns items array");
+    assert(reorderData.reorderItems.length >= 1, "Reorder items available for cart addition");
+    assert(typeof reorderData.reorderItems[0].productId === "string", "Reorder item has valid productId");
+    assert(typeof reorderData.reorderItems[0].priceKobo === "number", "Reorder item has valid priceKobo");
+  }
+
+  // 7. Update Customer Profile Settings
+  const updateProfileRes = await fetch(`${BASE_URL}/api/customer/profile`, {
+    method: "PATCH",
+    headers: authHeaders,
+    body: JSON.stringify({
+      name: "Chisom Adeleke Balogun",
+      whatsapp_opt_in: true,
+    }),
+  });
+  assert(updateProfileRes.status === 200, "Update profile endpoint returns HTTP 200");
+  const updateProfileData = await updateProfileRes.json();
+  assert(updateProfileData.customer.name === "Chisom Adeleke Balogun", "Customer name updated successfully");
+
+  // 8. Delete Address
+  const deleteAddrRes = await fetch(`${BASE_URL}/api/customer/addresses/${addressId}`, {
+    method: "DELETE",
+    headers: authHeaders,
+  });
+  assert(deleteAddrRes.status === 200, "Delete address endpoint returns HTTP 200");
+
+  // 9. Logout & Session Invalidation
+  const logoutRes = await fetch(`${BASE_URL}/api/customer/auth/logout`, {
+    method: "POST",
+    headers: authHeaders,
+  });
+  assert(logoutRes.status === 200, "Logout endpoint returns HTTP 200");
+
+  // Verify session invalidated
+  const postLogoutRes = await fetch(`${BASE_URL}/api/customer/profile`, {
+    headers: authHeaders,
+  });
+  assert(postLogoutRes.status === 401, "Invalidated session token returns HTTP 401 Unauthorized");
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");
