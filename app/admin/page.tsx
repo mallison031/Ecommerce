@@ -17,6 +17,10 @@ import {
   Loader2,
   MessageCircle,
   MessageSquare,
+  Send,
+  Copy,
+  ExternalLink,
+  ShoppingBag,
 } from "lucide-react";
 
 interface Order {
@@ -79,16 +83,52 @@ interface SupportTicket {
   } | null;
 }
 
+interface AbandonedOrder {
+  id: string;
+  order_number: number;
+  status: string;
+  total_kobo: number;
+  created_at: string;
+  reminder_sent_at: string | null;
+  customer: {
+    name: string;
+    email: string;
+    phone: string;
+    whatsapp_opt_in: boolean;
+    whatsapp_phone_e164: string | null;
+  };
+  items: Array<{
+    product_name_snapshot: string;
+    qty: number;
+    line_total_kobo: number;
+  }>;
+}
+
 export default function AdminDashboardPage() {
-  const [activeTab, setActiveTab] = useState<"orders" | "sales" | "notifications" | "tickets">("orders");
+  const [activeTab, setActiveTab] = useState<"orders" | "sales" | "notifications" | "tickets" | "abandoned">("orders");
   const [orders, setOrders] = useState<Order[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [ticketFilter, setTicketFilter] = useState<string>("");
+  const [abandonedFilter, setAbandonedFilter] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // Abandoned recovery state
+  const [abandonedOrders, setAbandonedOrders] = useState<AbandonedOrder[]>([]);
+  const [abandonedMetrics, setAbandonedMetrics] = useState({
+    totalPendingOrAbandoned: 0,
+    remindersSentCount: 0,
+    recoveredCount: 0,
+    recoveredRevenueKobo: 0,
+    atRiskRevenueKobo: 0,
+    recoveryRatePercent: 0,
+  });
+  const [runningSweep, setRunningSweep] = useState(false);
+  const [sendingReminderId, setSendingReminderId] = useState<string | null>(null);
+  const [copiedOrderId, setCopiedOrderId] = useState<string | null>(null);
 
   // Dispatch Modal State
   const [dispatchOrder, setDispatchOrder] = useState<Order | null>(null);
@@ -132,15 +172,77 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const fetchAbandoned = async () => {
+    try {
+      const url = abandonedFilter ? `/api/admin/abandoned?filter=${abandonedFilter}` : "/api/admin/abandoned";
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.success) {
+        setAbandonedOrders(data.orders);
+        setAbandonedMetrics(data.metrics);
+      }
+    } catch (e) {
+      console.error("Failed fetching abandoned orders:", e);
+    }
+  };
+
   useEffect(() => {
     fetchOrders();
+    fetchAbandoned();
     if (activeTab === "notifications") {
       fetchLogs();
     }
     if (activeTab === "tickets") {
       fetchTickets();
     }
-  }, [statusFilter, ticketFilter, activeTab]);
+    if (activeTab === "abandoned") {
+      fetchAbandoned();
+    }
+  }, [statusFilter, ticketFilter, abandonedFilter, activeTab]);
+
+  const handleRunSweep = async () => {
+    setRunningSweep(true);
+    try {
+      const res = await fetch("/api/admin/abandoned", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "sweep" }),
+      });
+      if (res.ok) {
+        await fetchAbandoned();
+      }
+    } catch (e) {
+      console.error("Failed running sweep:", e);
+    } finally {
+      setRunningSweep(false);
+    }
+  };
+
+  const handleSendSingleReminder = async (orderId: string) => {
+    setSendingReminderId(orderId);
+    try {
+      const res = await fetch("/api/admin/abandoned", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId }),
+      });
+      if (res.ok) {
+        await fetchAbandoned();
+      }
+    } catch (e) {
+      console.error("Failed sending reminder:", e);
+    } finally {
+      setSendingReminderId(null);
+    }
+  };
+
+  const copyResumeLink = (orderId: string) => {
+    const appUrl = typeof window !== "undefined" ? window.location.origin : "";
+    const url = `${appUrl}/checkout/resume?order=${orderId}&code=SAVE5`;
+    navigator.clipboard.writeText(url);
+    setCopiedOrderId(orderId);
+    setTimeout(() => setCopiedOrderId(null), 2500);
+  };
 
   const handleUpdateTicketStatus = async (ticketId: string, newStatus: string) => {
     try {
@@ -270,8 +372,10 @@ export default function AdminDashboardPage() {
           <button
             onClick={() => {
               fetchOrders();
+              fetchAbandoned();
               if (activeTab === "notifications") fetchLogs();
               if (activeTab === "tickets") fetchTickets();
+              if (activeTab === "abandoned") fetchAbandoned();
             }}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
           >
@@ -307,7 +411,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex items-center gap-4 border-b border-slate-200 text-sm font-semibold">
+      <div className="flex items-center gap-4 border-b border-slate-200 text-sm font-semibold flex-wrap">
         <button
           onClick={() => setActiveTab("orders")}
           className={`pb-3 border-b-2 transition-all ${
@@ -340,6 +444,21 @@ export default function AdminDashboardPage() {
           {tickets.filter((t) => t.status === "open").length > 0 && (
             <span className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
               {tickets.filter((t) => t.status === "open").length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab("abandoned")}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "abandoned"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-400 hover:text-slate-700"
+          }`}
+        >
+          <RotateCcw className="w-4 h-4" /> Abandoned Recovery
+          {abandonedMetrics.totalPendingOrAbandoned > 0 && (
+            <span className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+              {abandonedMetrics.totalPendingOrAbandoned}
             </span>
           )}
         </button>
@@ -741,6 +860,206 @@ export default function AdminDashboardPage() {
                               >
                                 Escalate
                               </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Abandoned Cart Recovery */}
+      {activeTab === "abandoned" && (
+        <div className="space-y-6">
+          {/* Recovery Overview KPIs */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <span className="text-xs font-medium text-slate-500">Rescued Revenue</span>
+              <p className="text-lg font-bold text-emerald-600 mt-1">
+                {formatKoboToNaira(abandonedMetrics.recoveredRevenueKobo)}
+              </p>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <span className="text-xs font-medium text-slate-500">Recovered Orders</span>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-lg font-bold text-slate-900">{abandonedMetrics.recoveredCount}</span>
+                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  {abandonedMetrics.recoveryRatePercent}% Rate
+                </span>
+              </div>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <span className="text-xs font-medium text-slate-500">Unpaid Cart Value at Risk</span>
+              <p className="text-lg font-bold text-amber-600 mt-1">
+                {formatKoboToNaira(abandonedMetrics.atRiskRevenueKobo)}
+              </p>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <span className="text-xs font-medium text-slate-500">Reminders Dispatched</span>
+              <p className="text-lg font-bold text-indigo-600 mt-1">{abandonedMetrics.remindersSentCount}</p>
+            </div>
+          </div>
+
+          {/* Action Bar & Filter */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs font-semibold text-slate-500 mr-1">Filter:</span>
+              {["", "unreminded", "reminded", "recovered"].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setAbandonedFilter(f)}
+                  className={`px-3 py-1 rounded-md text-xs font-medium capitalize transition-all ${
+                    abandonedFilter === f
+                      ? "bg-slate-900 text-white"
+                      : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {f || "All Carts"}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRunSweep}
+                disabled={runningSweep}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-xs"
+              >
+                {runningSweep ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Sweeping Carts...
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="w-3.5 h-3.5" /> Run Recovery Sweep Now
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Table of Carts */}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider">
+                <tr>
+                  <th className="p-3.5">Order #</th>
+                  <th className="p-3.5">Customer & WhatsApp</th>
+                  <th className="p-3.5">Items in Cart</th>
+                  <th className="p-3.5">Amount</th>
+                  <th className="p-3.5">Recovery Status</th>
+                  <th className="p-3.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {abandonedOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-slate-400">
+                      No unpaid or abandoned checkouts found.
+                    </td>
+                  </tr>
+                ) : (
+                  abandonedOrders.map((ord) => {
+                    const isPaid = ord.status === "paid" || ord.status === "shipped" || ord.status === "delivered";
+                    const isReminded = ord.reminder_sent_at !== null;
+                    const cleanPhone = (ord.customer.whatsapp_phone_e164 || ord.customer.phone || "").replace(/\D/g, "");
+
+                    return (
+                      <tr key={ord.id} className="hover:bg-slate-50/50">
+                        <td className="p-3.5 font-bold font-mono text-slate-900">
+                          #{ord.order_number}
+                          <div className="text-[10px] font-normal text-slate-400 mt-0.5">
+                            {new Date(ord.created_at).toLocaleDateString("en-NG", {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </div>
+                        </td>
+                        <td className="p-3.5">
+                          <div className="font-semibold text-slate-900">{ord.customer.name}</div>
+                          <div className="text-slate-500 text-[11px]">{ord.customer.email}</div>
+                          {ord.customer.whatsapp_opt_in && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 font-semibold mt-0.5">
+                              <MessageCircle className="w-3 h-3" /> WhatsApp Opted In
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3.5 max-w-xs">
+                          <div className="space-y-0.5">
+                            {ord.items.map((item, idx) => (
+                              <div key={idx} className="text-slate-800 truncate">
+                                {item.product_name_snapshot} <span className="text-slate-500">×{item.qty}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="p-3.5 font-bold text-slate-900">
+                          {formatKoboToNaira(ord.total_kobo)}
+                        </td>
+                        <td className="p-3.5">
+                          {isPaid ? (
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800">
+                              Recovered & Paid
+                            </span>
+                          ) : isReminded ? (
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-100 text-indigo-800">
+                              Reminder Sent
+                            </span>
+                          ) : ord.status === "abandoned" ? (
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-200 text-slate-800">
+                              Abandoned
+                            </span>
+                          ) : (
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-800">
+                              Unpaid / Pending
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3.5 text-right">
+                          <div className="inline-flex items-center justify-end gap-1.5 flex-wrap">
+                            {!isPaid && (
+                              <button
+                                onClick={() => handleSendSingleReminder(ord.id)}
+                                disabled={sendingReminderId === ord.id}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold transition-colors"
+                              >
+                                {sendingReminderId === ord.id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Send className="w-3.5 h-3.5" />
+                                )}
+                                Send Reminder
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => copyResumeLink(ord.id)}
+                              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition-colors"
+                              title="Copy 1-Click Checkout Resume Link"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                              {copiedOrderId === ord.id ? "Copied!" : "Copy Link"}
+                            </button>
+
+                            {cleanPhone && (
+                              <a
+                                href={`https://wa.me/${cleanPhone}?text=${encodeURIComponent(
+                                  `Hi ${ord.customer.name}! We noticed you started checking out Order #${ord.order_number}. Let us know if you need any help completing your purchase!`
+                                )}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 font-semibold transition-colors"
+                                title="Chat on WhatsApp"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                              </a>
                             )}
                           </div>
                         </td>
