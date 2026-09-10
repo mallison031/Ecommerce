@@ -19,8 +19,18 @@ import {
   Sparkles,
   Zap,
   MapPin,
+  Tag,
+  CheckCircle2,
+  X,
 } from "lucide-react";
 import Link from "next/link";
+
+interface AppliedCoupon {
+  code: string;
+  discountKobo: number;
+  shippingDiscountKobo: number;
+  description?: string;
+}
 
 export default function CheckoutPage() {
   const { items, subtotalKobo } = useCart();
@@ -34,6 +44,12 @@ export default function CheckoutPage() {
   const [isExpress, setIsExpress] = useState(false);
   const [whatsappOptIn, setWhatsappOptIn] = useState(false);
 
+  // Coupon state
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponMessage, setCouponMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,7 +61,11 @@ export default function CheckoutPage() {
     isExpress: state === "Lagos" ? isExpress : false,
   });
 
-  const totalKobo = subtotalKobo + shipping.shippingFeeKobo;
+  const couponDiscountKobo = appliedCoupon?.discountKobo || 0;
+  const shippingDiscountKobo = appliedCoupon?.shippingDiscountKobo || 0;
+  const discountedSubtotalKobo = Math.max(0, subtotalKobo - couponDiscountKobo);
+  const finalShippingFeeKobo = Math.max(0, shipping.shippingFeeKobo - shippingDiscountKobo);
+  const totalKobo = discountedSubtotalKobo + finalShippingFeeKobo;
 
   if (items.length === 0) {
     return (
@@ -63,6 +83,48 @@ export default function CheckoutPage() {
       </div>
     );
   }
+
+  const handleApplyCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!couponInput.trim()) return;
+    setCouponLoading(true);
+    setCouponMessage(null);
+
+    try {
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: couponInput.trim(),
+          subtotalKobo,
+          shippingFeeKobo: shipping.shippingFeeKobo,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.valid) {
+        setCouponMessage({ type: "error", text: data.message || "Invalid coupon code." });
+        setAppliedCoupon(null);
+      } else {
+        setAppliedCoupon({
+          code: data.coupon.code,
+          discountKobo: data.discountKobo,
+          shippingDiscountKobo: data.shippingDiscountKobo,
+          description: data.coupon.description,
+        });
+        setCouponMessage({ type: "success", text: `Coupon '${data.coupon.code}' applied!` });
+      }
+    } catch {
+      setCouponMessage({ type: "error", text: "Could not validate coupon." });
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponInput("");
+    setCouponMessage(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,6 +145,7 @@ export default function CheckoutPage() {
           state,
           lagosZone: state === "Lagos" ? lagosZone : undefined,
           isExpress: state === "Lagos" ? isExpress : false,
+          couponCode: appliedCoupon?.code || undefined,
           whatsappOptIn,
           items: items.map((i) => ({
             productId: i.productId,
@@ -349,9 +412,9 @@ export default function CheckoutPage() {
         </div>
 
         {/* Mini Order Summary */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 h-fit space-y-4">
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 h-fit space-y-5">
           <h2 className="text-sm font-bold text-slate-900">Your Order Items</h2>
-          <div className="divide-y divide-slate-100 max-h-72 overflow-y-auto pr-1">
+          <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto pr-1">
             {items.map((item) => (
               <div key={item.productId} className="py-2.5 flex items-center justify-between text-xs">
                 <div className="min-w-0 pr-2">
@@ -365,15 +428,93 @@ export default function CheckoutPage() {
             ))}
           </div>
 
+          {/* Interactive Promo / Coupon Input */}
+          <div className="pt-3 border-t border-slate-200">
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1.5">
+              <Tag className="w-3.5 h-3.5 text-slate-500" />
+              Promo Code or Coupon
+            </label>
+
+            {appliedCoupon ? (
+              <div className="flex items-center justify-between p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <div>
+                    <span className="font-bold text-emerald-900">{appliedCoupon.code}</span>
+                    <p className="text-[11px] text-emerald-700">
+                      -{formatKoboToNaira(appliedCoupon.discountKobo)} discount applied
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRemoveCoupon}
+                  className="p-1 text-slate-400 hover:text-red-600 rounded-md transition-colors"
+                  title="Remove coupon"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleApplyCoupon} className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value)}
+                    placeholder="e.g. WELCOME10"
+                    className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg uppercase font-mono focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  />
+                  <button
+                    type="submit"
+                    disabled={couponLoading || !couponInput.trim()}
+                    className="px-3 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors"
+                  >
+                    {couponLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : "Apply"}
+                  </button>
+                </div>
+                {couponMessage && (
+                  <p
+                    className={`text-[11px] font-medium ${
+                      couponMessage.type === "success" ? "text-emerald-600" : "text-red-600"
+                    }`}
+                  >
+                    {couponMessage.text}
+                  </p>
+                )}
+                {/* Quick Suggestion Chips */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {["WELCOME10", "AURA2000", "SAVE5"].map((chip) => (
+                    <button
+                      key={chip}
+                      type="button"
+                      onClick={() => setCouponInput(chip)}
+                      className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                    >
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+              </form>
+            )}
+          </div>
+
           <div className="border-t border-slate-200 pt-3 space-y-1.5 text-xs">
             <div className="flex justify-between text-slate-600">
               <span>Subtotal</span>
               <span>{formatKoboToNaira(subtotalKobo)}</span>
             </div>
 
+            {appliedCoupon && appliedCoupon.discountKobo > 0 && (
+              <div className="flex justify-between text-emerald-600 font-medium">
+                <span>Coupon Discount ({appliedCoupon.code})</span>
+                <span>-{formatKoboToNaira(appliedCoupon.discountKobo)}</span>
+              </div>
+            )}
+
             <div className="flex justify-between text-slate-600">
               <span>Delivery ({state})</span>
-              {shipping.isFreeDelivery ? (
+              {shipping.isFreeDelivery || appliedCoupon?.shippingDiscountKobo ? (
                 <span className="text-emerald-600 font-semibold">FREE</span>
               ) : (
                 <span>{formatKoboToNaira(shipping.originalFeeKobo - (isExpress ? LAGOS_EXPRESS_ADDON_KOBO : 0))}</span>

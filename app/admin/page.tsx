@@ -21,6 +21,10 @@ import {
   Copy,
   ExternalLink,
   ShoppingBag,
+  Tag,
+  Zap,
+  Plus,
+  Sparkles,
 } from "lucide-react";
 
 interface Order {
@@ -105,7 +109,7 @@ interface AbandonedOrder {
 }
 
 export default function AdminDashboardPage() {
-  const [activeTab, setActiveTab] = useState<"orders" | "sales" | "notifications" | "tickets" | "abandoned">("orders");
+  const [activeTab, setActiveTab] = useState<"orders" | "sales" | "notifications" | "tickets" | "abandoned" | "promotions">("orders");
   const [orders, setOrders] = useState<Order[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -136,6 +140,27 @@ export default function AdminDashboardPage() {
   const [dispatchTracking, setDispatchTracking] = useState("");
   const [dispatchNotes, setDispatchNotes] = useState("");
   const [submittingDispatch, setSubmittingDispatch] = useState(false);
+
+  // Promotions & Flash Sales State
+  const [coupons, setCoupons] = useState<any[]>([]);
+  const [couponStats, setCouponStats] = useState({
+    totalCoupons: 0,
+    activeCoupons: 0,
+    totalRedemptions: 0,
+    activeFlashSalesCount: 0,
+  });
+  const [flashSales, setFlashSales] = useState<any[]>([]);
+  const [loadingCoupons, setLoadingCoupons] = useState(false);
+  const [showCreateCouponModal, setShowCreateCouponModal] = useState(false);
+  const [newCouponCode, setNewCouponCode] = useState("");
+  const [newCouponType, setNewCouponType] = useState<"PERCENTAGE" | "FIXED_AMOUNT" | "FREE_SHIPPING">("PERCENTAGE");
+  const [newCouponValue, setNewCouponValue] = useState<number>(10);
+  const [newCouponMinSpendNaira, setNewCouponMinSpendNaira] = useState<number>(5000);
+  const [newCouponSector, setNewCouponSector] = useState<string>("");
+  const [newCouponDescription, setNewCouponDescription] = useState<string>("");
+  const [newCouponLimit, setNewCouponLimit] = useState<string>("");
+  const [submittingCoupon, setSubmittingCoupon] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -186,9 +211,67 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const fetchCoupons = async () => {
+    setLoadingCoupons(true);
+    try {
+      const res = await fetch("/api/admin/coupons");
+      const data = await res.json();
+      if (data.success) {
+        setCoupons(data.coupons);
+        setFlashSales(data.flashSales);
+        setCouponStats(data.stats);
+      }
+    } catch (e) {
+      console.error("Failed fetching coupons:", e);
+    } finally {
+      setLoadingCoupons(false);
+    }
+  };
+
+  const handleCreateCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCouponError(null);
+    if (!newCouponCode.trim()) {
+      setCouponError("Please enter a valid coupon code");
+      return;
+    }
+    setSubmittingCoupon(true);
+    try {
+      const res = await fetch("/api/admin/coupons", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: newCouponCode.trim().toUpperCase(),
+          discountType: newCouponType,
+          discountValue: Number(newCouponValue),
+          minSpendKobo: Number(newCouponMinSpendNaira) * 100,
+          sectorRestriction: newCouponSector || null,
+          usageLimit: newCouponLimit ? Number(newCouponLimit) : null,
+          description: newCouponDescription.trim() || `${newCouponCode} promotional discount`,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setShowCreateCouponModal(false);
+        setNewCouponCode("");
+        setNewCouponDescription("");
+        setNewCouponLimit("");
+        await fetchCoupons();
+      } else {
+        setCouponError(data.error || "Failed to create coupon");
+      }
+    } catch (err) {
+      console.error("Failed to create coupon:", err);
+      setCouponError("Network error while creating coupon");
+    } finally {
+      setSubmittingCoupon(false);
+    }
+  };
+
   useEffect(() => {
     fetchOrders();
     fetchAbandoned();
+    fetchCoupons();
     if (activeTab === "notifications") {
       fetchLogs();
     }
@@ -197,6 +280,9 @@ export default function AdminDashboardPage() {
     }
     if (activeTab === "abandoned") {
       fetchAbandoned();
+    }
+    if (activeTab === "promotions") {
+      fetchCoupons();
     }
   }, [statusFilter, ticketFilter, abandonedFilter, activeTab]);
 
@@ -459,6 +545,21 @@ export default function AdminDashboardPage() {
           {abandonedMetrics.totalPendingOrAbandoned > 0 && (
             <span className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
               {abandonedMetrics.totalPendingOrAbandoned}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab("promotions")}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "promotions"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-400 hover:text-slate-700"
+          }`}
+        >
+          <Tag className="w-4 h-4" /> Promotions & Coupons
+          {couponStats.activeCoupons > 0 && (
+            <span className="bg-pink-100 text-pink-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+              {couponStats.activeCoupons}
             </span>
           )}
         </button>
@@ -1069,6 +1170,354 @@ export default function AdminDashboardPage() {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Promotions & Flash Sales */}
+      {activeTab === "promotions" && (
+        <div className="space-y-6">
+          {/* Header with Create Action */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-pink-50 border border-pink-200 text-[10px] font-bold text-pink-700 uppercase tracking-wider mb-1">
+                <Tag className="w-3 h-3 text-pink-600" /> Revenue & Conversion Incentives
+              </div>
+              <h3 className="text-base font-bold text-slate-900">Promotions, Coupons & Sector Flash Sales</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Manage promotional discount codes, minimum basket thresholds, and time-sensitive sector flash sales.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowCreateCouponModal(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-colors shadow-xs shrink-0"
+            >
+              <Plus className="w-4 h-4" /> Create Promo Code
+            </button>
+          </div>
+
+          {/* Coupon KPI Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <span className="text-xs font-medium text-slate-500">Configured Coupons</span>
+              <p className="text-lg font-bold text-slate-900 mt-1">{couponStats.totalCoupons}</p>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <span className="text-xs font-medium text-slate-500">Active Coupons</span>
+              <p className="text-lg font-bold text-pink-600 mt-1">{couponStats.activeCoupons}</p>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <span className="text-xs font-medium text-slate-500">Total Redemptions</span>
+              <p className="text-lg font-bold text-emerald-600 mt-1">{couponStats.totalRedemptions}</p>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-slate-200">
+              <span className="text-xs font-medium text-slate-500">Active Flash Sales</span>
+              <p className="text-lg font-bold text-amber-600 mt-1">{couponStats.activeFlashSalesCount}</p>
+            </div>
+          </div>
+
+          {/* Active Flash Sales Spotlight */}
+          {flashSales.length > 0 && (
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-3">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  Active Sector Flash Sales
+                </h4>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {flashSales.map((sale) => (
+                  <div
+                    key={sale.id}
+                    className={`p-4 rounded-xl bg-gradient-to-r ${sale.bannerBg} text-white shadow-xs relative overflow-hidden`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="inline-block px-2 py-0.5 rounded-full bg-white/20 text-[10px] font-bold uppercase tracking-wider text-yellow-200 mb-1">
+                          {sale.sectorSlug}
+                        </span>
+                        <h5 className="font-bold text-sm leading-snug">{sale.title}</h5>
+                        <p className="text-xs text-white/90 mt-1">
+                          Incentive: <span className="font-bold">{sale.discountPercent}% OFF</span> with code{" "}
+                          <span className="font-mono font-black bg-white/20 px-1.5 py-0.5 rounded">{sale.promoCode}</span>
+                        </p>
+                      </div>
+                      <span className="text-[10px] bg-black/30 px-2 py-1 rounded-md whitespace-nowrap font-mono text-yellow-300 font-semibold">
+                        Ends: {new Date(sale.endsAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Coupons Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Tag className="w-4 h-4 text-pink-600" />
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  Promotional Discount Coupons ({coupons.length})
+                </h4>
+              </div>
+              {loadingCoupons && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase text-slate-500 tracking-wider">
+                  <tr>
+                    <th className="p-3.5">Code & Description</th>
+                    <th className="p-3.5">Discount Value</th>
+                    <th className="p-3.5">Min Spend</th>
+                    <th className="p-3.5">Category Scope</th>
+                    <th className="p-3.5">Redemptions</th>
+                    <th className="p-3.5">Status</th>
+                    <th className="p-3.5 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {coupons.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-slate-400">
+                        No promotional coupons configured yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    coupons.map((c) => (
+                      <tr key={c.id} className="hover:bg-slate-50/50">
+                        <td className="p-3.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              {c.code}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-1 max-w-xs">{c.description}</p>
+                        </td>
+                        <td className="p-3.5 font-bold text-slate-900">
+                          {c.formattedDiscount ||
+                            (c.discountType === "PERCENTAGE"
+                              ? `${c.discountValue}%`
+                              : c.discountType === "FIXED_AMOUNT"
+                              ? formatKoboToNaira(c.discountValue)
+                              : "Free Delivery")}
+                        </td>
+                        <td className="p-3.5 font-medium text-slate-700">
+                          {c.formattedMinSpend || formatKoboToNaira(c.minSpendKobo)}
+                        </td>
+                        <td className="p-3.5">
+                          {c.sectorRestriction ? (
+                            <span className="inline-block px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-semibold text-[10px]">
+                              {c.sectorRestriction}
+                            </span>
+                          ) : (
+                            <span className="inline-block px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold text-[10px]">
+                              Storewide
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3.5 font-semibold text-slate-800">
+                          {c.timesUsed} {c.usageLimit ? `/ ${c.usageLimit}` : "uses"}
+                        </td>
+                        <td className="p-3.5">
+                          {c.isActive ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <CheckCircle className="w-3 h-3" /> Active
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                              Inactive
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3.5 text-right">
+                          <button
+                            onClick={() => {
+                              if (typeof navigator !== "undefined") {
+                                navigator.clipboard.writeText(c.code);
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] transition-colors"
+                            title="Copy code"
+                          >
+                            <Copy className="w-3 h-3" /> Copy
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Coupon Modal */}
+      {showCreateCouponModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center">
+                  <Tag className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Create New Coupon Code</h3>
+                  <p className="text-[11px] text-slate-500">Configure promotional discount rules</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCreateCouponModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {couponError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{couponError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateCoupon} className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Coupon Code *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newCouponCode}
+                    onChange={(e) => setNewCouponCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. FLASH20"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg font-mono font-bold text-slate-900 uppercase focus:outline-hidden focus:border-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Discount Type *
+                  </label>
+                  <select
+                    value={newCouponType}
+                    onChange={(e) => setNewCouponType(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 font-semibold focus:outline-hidden focus:border-slate-900"
+                  >
+                    <option value="PERCENTAGE">Percentage (%) Off</option>
+                    <option value="FIXED_AMOUNT">Fixed Amount (₦) Off</option>
+                    <option value="FREE_SHIPPING">Free Courier Delivery</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {newCouponType === "PERCENTAGE"
+                      ? "Percentage Value (%) *"
+                      : newCouponType === "FIXED_AMOUNT"
+                      ? "Discount Amount (₦) *"
+                      : "Free Delivery Waiver"}
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    disabled={newCouponType === "FREE_SHIPPING"}
+                    value={newCouponType === "FREE_SHIPPING" ? 100 : newCouponValue}
+                    onChange={(e) => setNewCouponValue(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-bold focus:outline-hidden focus:border-slate-900 disabled:bg-slate-100 disabled:text-slate-400"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Min Basket Spend (₦)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={newCouponMinSpendNaira}
+                    onChange={(e) => setNewCouponMinSpendNaira(Number(e.target.value))}
+                    placeholder="5000"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-hidden focus:border-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Sector Scope
+                  </label>
+                  <select
+                    value={newCouponSector}
+                    onChange={(e) => setNewCouponSector(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-hidden focus:border-slate-900"
+                  >
+                    <option value="">Storewide (All Categories)</option>
+                    <option value="jewelry">Fine & Fashion Jewelry</option>
+                    <option value="girly-essentials">Girly Essentials</option>
+                    <option value="content-accessories">Content Accessories</option>
+                    <option value="kitchen-souvenirs">Kitchen & Souvenirs</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Usage Limit (Optional)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={newCouponLimit}
+                    onChange={(e) => setNewCouponLimit(e.target.value)}
+                    placeholder="Unlimited"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-hidden focus:border-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Public Description
+                </label>
+                <input
+                  type="text"
+                  value={newCouponDescription}
+                  onChange={(e) => setNewCouponDescription(e.target.value)}
+                  placeholder="e.g. 10% off for first-time shoppers on orders over ₦5,000"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-hidden focus:border-slate-900"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateCouponModal(false)}
+                  disabled={submittingCoupon}
+                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 font-semibold text-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingCoupon}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-pink-600 hover:bg-pink-700 font-bold text-white transition-colors shadow-xs"
+                >
+                  {submittingCoupon ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Tag className="w-3.5 h-3.5" /> Save Coupon
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
