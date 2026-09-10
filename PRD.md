@@ -5,6 +5,8 @@ A storefront selling physical products across four sectors — Jewelry & Accesso
 
 **Note on payment provider:** Stripe does not support merchant accounts registered in Nigeria directly. Paystack (Stripe-owned, Nigeria-native) is used instead.
 
+
+
 **Note on messaging provider:** WhatsApp (Meta Cloud API, connected directly rather than through a paid BSP) replaces the originally-planned Telegram bot, per your decision. This is a materially different messaging model — see architecture-essentials.md for what that changes. The biggest consequences for this PRD: (a) messages the business sends *without* the customer messaging first must use a Meta-approved template, and (b) sending real order-update messages to real customers requires Meta Business Verification, which is a launch-blocking step, not a background task.
 
 ## 2. Goals
