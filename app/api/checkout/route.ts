@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { initializePaystackTransaction } from "@/lib/paystack";
 import { formatToE164 } from "@/lib/utils";
+import { calculateShippingFee } from "@/lib/shipping";
 import { z } from "zod";
 
 const checkoutSchema = z.object({
@@ -9,6 +10,9 @@ const checkoutSchema = z.object({
   email: z.string().email("Valid email is required"),
   phone: z.string().min(8, "Valid phone number is required"),
   deliveryAddress: z.string().min(5, "Delivery address is required"),
+  state: z.string().optional(),
+  lagosZone: z.enum(["lagos_mainland", "lagos_island"]).optional(),
+  isExpress: z.boolean().optional().default(false),
   whatsappOptIn: z.boolean().default(false),
   items: z
     .array(
@@ -32,7 +36,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { name, email, phone, deliveryAddress, whatsappOptIn, items } = parsed.data;
+    const { name, email, phone, deliveryAddress, state, lagosZone, isExpress, whatsappOptIn, items } =
+      parsed.data;
 
     // Fetch product information
     const productIds = items.map((i) => i.productId);
@@ -68,7 +73,23 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    const totalKobo = subtotalKobo; // Any flat delivery fee can be layered on here
+    // Calculate dynamic shipping fee
+    let shippingFeeKobo = 0;
+    let deliverySla = "2–4 Business Days";
+    let isFreeDelivery = false;
+    if (state) {
+      const shippingCalc = calculateShippingFee({
+        state,
+        lagosZone,
+        subtotalKobo,
+        isExpress,
+      });
+      shippingFeeKobo = shippingCalc.shippingFeeKobo;
+      deliverySla = shippingCalc.deliverySla;
+      isFreeDelivery = shippingCalc.isFreeDelivery;
+    }
+
+    const totalKobo = subtotalKobo + shippingFeeKobo;
 
     // Format phone to E.164 if WhatsApp opted in
     const formattedPhone = whatsappOptIn ? formatToE164(phone) : null;
@@ -91,6 +112,10 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    const fullAddress = state
+      ? `${deliveryAddress} (${state}${state.toLowerCase() === "lagos" && lagosZone ? `, ${lagosZone === "lagos_island" ? "Island" : "Mainland"}` : ""})`
+      : deliveryAddress;
+
     // Create Order with pending_payment status (no pre-reservation of stock per architecture-essentials.md)
     const order = await prisma.order.create({
       data: {
@@ -99,7 +124,7 @@ export async function POST(req: NextRequest) {
         subtotal_kobo: subtotalKobo,
         total_kobo: totalKobo,
         currency: "NGN",
-        delivery_address: deliveryAddress,
+        delivery_address: fullAddress,
         items: {
           create: orderItemsData,
         },
@@ -119,6 +144,11 @@ export async function POST(req: NextRequest) {
       metadata: {
         orderId: order.id,
         orderNumber: order.order_number,
+        subtotalKobo,
+        shippingFeeKobo,
+        isFreeDelivery,
+        deliverySla,
+        state: state || "Lagos",
       },
     });
 
@@ -127,6 +157,11 @@ export async function POST(req: NextRequest) {
       authorizationUrl: paystackResult.data.authorization_url,
       orderNumber: order.order_number,
       orderId: order.id,
+      subtotalKobo,
+      shippingFeeKobo,
+      totalKobo,
+      deliverySla,
+      isFreeDelivery,
     });
   } catch (error: unknown) {
     console.error("[Checkout] Error during checkout initialization:", error);

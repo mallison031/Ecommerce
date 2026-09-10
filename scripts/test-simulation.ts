@@ -421,6 +421,68 @@ async function runTests() {
   assert(adminTriggerData.success === true, "Admin manual recovery trigger succeeded");
   console.log();
 
+  // --- TEST 12: Nigerian Dynamic Shipping Engine & Checkout Fee Integration ---
+  console.log("--- TEST 12: Nigerian Dynamic Shipping Engine & Checkout Integration ---");
+  const shippingInfoRes = await fetch(`${BASE_URL}/api/shipping/calculate`);
+  assert(shippingInfoRes.status === 200, "Shipping info GET returns HTTP 200");
+  const shippingInfo = await shippingInfoRes.json();
+  assert(Array.isArray(shippingInfo.states) && shippingInfo.states.length >= 36, "Shipping API returns Nigerian states");
+  assert(shippingInfo.freeShippingThresholdKobo === 5000000, "Free shipping threshold is ₦50,000");
+
+  // Test Lagos Mainland calculation
+  const lagosMainlandCalcRes = await fetch(`${BASE_URL}/api/shipping/calculate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ state: "Lagos", lagosZone: "lagos_mainland", subtotalKobo: 1500000 }),
+  });
+  assert(lagosMainlandCalcRes.status === 200, "Lagos Mainland shipping calculation returns HTTP 200");
+  const lagosMainlandCalc = await lagosMainlandCalcRes.json();
+  assert(lagosMainlandCalc.shippingFeeKobo === 200000, "Lagos Mainland base fee is ₦2,000");
+  assert(lagosMainlandCalc.isFreeDelivery === false, "Subtotal under ₦50k does not qualify for free delivery");
+
+  // Test Interstate Abuja calculation
+  const abujaCalcRes = await fetch(`${BASE_URL}/api/shipping/calculate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ state: "Abuja (FCT)", subtotalKobo: 1500000 }),
+  });
+  assert(abujaCalcRes.status === 200, "Abuja shipping calculation returns HTTP 200");
+  const abujaCalc = await abujaCalcRes.json();
+  assert(abujaCalc.shippingFeeKobo === 400000, "Abuja interstate fee is ₦4,000");
+
+  // Test Free Delivery qualification
+  const freeShippingCalcRes = await fetch(`${BASE_URL}/api/shipping/calculate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ state: "Rivers", subtotalKobo: 6000000 }),
+  });
+  assert(freeShippingCalcRes.status === 200, "Free shipping qualification calculation returns HTTP 200");
+  const freeShippingCalc = await freeShippingCalcRes.json();
+  assert(freeShippingCalc.isFreeDelivery === true, "Subtotal over ₦50k qualifies for free delivery");
+  assert(freeShippingCalc.shippingFeeKobo === 0, "Free delivery results in ₦0 shipping fee");
+
+  // Test Dynamic Checkout with Lagos Island + Express add-on
+  const shippingCheckoutRes = await fetch(`${BASE_URL}/api/checkout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "Bolanle Cole",
+      email: "bolanle.cole@example.com",
+      phone: "08098765432",
+      deliveryAddress: "Penthouse 4, Ocean Parade, Banana Island",
+      state: "Lagos",
+      lagosZone: "lagos_island",
+      isExpress: true,
+      whatsappOptIn: true,
+      items: [{ productId: product.id, quantity: 1 }],
+    }),
+  });
+  assert(shippingCheckoutRes.status === 200, "Checkout with dynamic shipping returns HTTP 200");
+  const shippingCheckoutData = await shippingCheckoutRes.json();
+  assert(shippingCheckoutData.shippingFeeKobo === 400000, "Shipping fee includes Island base (₦2,500) + Express (₦1,500)");
+  assert(shippingCheckoutData.totalKobo === product.price_kobo + 400000, "Order total correctly includes item price and shipping fee");
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");
