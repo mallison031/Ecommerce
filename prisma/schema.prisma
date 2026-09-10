@@ -62,9 +62,11 @@ model Product {
   stock_qty   Int         @default(0)
   image_urls  String[]
   is_active   Boolean     @default(true)
-  order_items OrderItem[]
-  reviews     ProductReview[]
-  created_at  DateTime    @default(now())
+  order_items     OrderItem[]
+  reviews         ProductReview[]
+  adjustment_logs StockAdjustmentLog[]
+  stock_waitlist  StockWaitlist[]
+  created_at      DateTime    @default(now())
   updated_at  DateTime    @updatedAt
 
   @@index([sector_id])
@@ -243,3 +245,32 @@ model ProductReview {
   @@index([is_approved])
   @@index([created_at])
 }
+
+model StockAdjustmentLog {
+  id             String   @id @default(cuid())
+  product_id     String
+  product        Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  previous_stock Int
+  new_stock      Int
+  adjustment     Int
+  reason         String?
+  notes          String?
+  created_at     DateTime @default(now())
+
+  @@index([product_id])
+  @@index([created_at])
+}
+
+model StockWaitlist {
+  id         String   @id @default(cuid())
+  product_id String
+  product    Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  email      String
+  phone      String?
+  notified   Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  @@index([product_id])
+  @@index([email])
+}
+

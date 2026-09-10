@@ -80,6 +80,15 @@ export function ProductCard({
           )}
         </Link>
 
+        {/* Low Stock Urgency Pill */}
+        {!isOutOfStock && product.stock_qty <= 5 && (
+          <div className="absolute top-2.5 left-2.5 z-10">
+            <span className="inline-flex items-center gap-1 bg-amber-500/90 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs uppercase tracking-wider animate-pulse">
+              Only {product.stock_qty} left!
+            </span>
+          </div>
+        )}
+
         {/* Floating Wishlist Toggle Button */}
         <button
           type="button"
