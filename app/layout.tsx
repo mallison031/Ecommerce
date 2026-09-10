@@ -7,6 +7,7 @@ import { ShoppingBag, MessageCircle } from "lucide-react";
 import { HeaderCartButton } from "@/components/header-cart-button";
 import { HeaderWishlistButton } from "@/components/header-wishlist-button";
 import { HeaderSearchBar } from "@/components/header-search-bar";
+import { HeaderAccountButton } from "@/components/header-account-button";
 
 export const metadata: Metadata = {
   title: "Aura Essentials | Curated Multi-Sector Storefront",
@@ -75,6 +76,9 @@ export default function RootLayout({
                     <MessageCircle className="w-3.5 h-3.5" />
                     WhatsApp Support
                   </a>
+
+                  {/* Account Trigger */}
+                  <HeaderAccountButton />
 
                   {/* Wishlist Trigger */}
                   <HeaderWishlistButton />

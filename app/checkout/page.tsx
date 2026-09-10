@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useCart } from "@/context/cart-context";
 import { formatKoboToNaira } from "@/lib/utils";
 import {
@@ -43,6 +43,41 @@ export default function CheckoutPage() {
   const [lagosZone, setLagosZone] = useState<"lagos_mainland" | "lagos_island">("lagos_mainland");
   const [isExpress, setIsExpress] = useState(false);
   const [whatsappOptIn, setWhatsappOptIn] = useState(false);
+
+  // Authenticated customer auto-fill & saved addresses
+  const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [isCustomerLoggedIn, setIsCustomerLoggedIn] = useState(false);
+
+  useEffect(() => {
+    async function loadCustomer() {
+      try {
+        const res = await fetch("/api/customer/profile");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.customer) {
+            setIsCustomerLoggedIn(true);
+            setName((prev) => prev || data.customer.name || "");
+            setEmail((prev) => prev || data.customer.email || "");
+            setPhone((prev) => prev || data.customer.phone || "");
+            if (data.customer.whatsapp_opt_in) setWhatsappOptIn(true);
+            if (data.addresses && data.addresses.length > 0) {
+              setSavedAddresses(data.addresses);
+              const defaultAddr = data.addresses.find((a: any) => a.is_default) || data.addresses[0];
+              if (defaultAddr) {
+                setSelectedAddressId(defaultAddr.id);
+                setDeliveryAddress(defaultAddr.street_address + (defaultAddr.lga ? `, ${defaultAddr.lga}` : ""));
+                if (defaultAddr.state) setState(defaultAddr.state);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Guest checkout fallback
+      }
+    }
+    loadCustomer();
+  }, []);
 
   // Coupon state
   const [couponInput, setCouponInput] = useState("");
@@ -207,10 +242,62 @@ export default function CheckoutPage() {
         {/* Checkout Form */}
         <div className="md:col-span-2">
           <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200">
-            <h1 className="text-xl font-bold text-slate-900">Guest Checkout</h1>
-            <p className="text-xs text-slate-500 mt-1">
-              No account required. Fill in your delivery and contact information below.
-            </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-xl font-bold text-slate-900">
+                  {isCustomerLoggedIn ? "Express Checkout" : "Guest Checkout"}
+                </h1>
+                <p className="text-xs text-slate-500 mt-1">
+                  {isCustomerLoggedIn
+                    ? "Welcome back! Your contact details and delivery address have been pre-filled."
+                    : "No account required. Fill in your delivery and contact information below."}
+                </p>
+              </div>
+              {!isCustomerLoggedIn && (
+                <Link
+                  href="/account"
+                  className="text-xs font-semibold text-pink-600 hover:underline"
+                >
+                  Sign in
+                </Link>
+              )}
+            </div>
+
+            {/* Saved Address Quick Picker */}
+            {savedAddresses.length > 0 && (
+              <div className="mt-5 p-3.5 bg-pink-50/60 rounded-xl border border-pink-200/70 space-y-2">
+                <span className="text-[11px] font-bold text-pink-900 uppercase tracking-wider block">
+                  Select a Saved Delivery Address:
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {savedAddresses.map((addr: any) => (
+                    <button
+                      key={addr.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedAddressId(addr.id);
+                        setDeliveryAddress(addr.street_address + (addr.lga ? `, ${addr.lga}` : ""));
+                        if (addr.state) setState(addr.state);
+                        if (addr.phone) setPhone(addr.phone);
+                        if (addr.recipient_name) setName(addr.recipient_name);
+                      }}
+                      className={`text-left p-2.5 rounded-lg border text-xs transition-all ${
+                        selectedAddressId === addr.id
+                          ? "bg-white border-pink-500 ring-2 ring-pink-200 shadow-2xs font-semibold"
+                          : "bg-white/80 border-slate-200 hover:border-slate-300"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-[10px] text-slate-500">
+                        <span className="font-bold uppercase text-slate-700">{addr.label}</span>
+                        {addr.is_default && <span className="text-pink-600 font-bold">Default</span>}
+                      </div>
+                      <div className="text-slate-900 mt-0.5 truncate">{addr.street_address}</div>
+                      <div className="text-[10px] text-slate-500">{addr.state}, Nigeria</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {error && (
               <div className="mt-4 p-3 bg-red-50 text-red-700 text-xs rounded-lg border border-red-200">
