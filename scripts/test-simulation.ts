@@ -276,6 +276,77 @@ async function runTests() {
   assert(cronRes.ok && cronData.success === true, "Cron sweep endpoint executes and returns success");
   console.log();
 
+  // --- TEST 8: Two-Way WhatsApp Interactive Bot Order Tracking Inquiry ---
+  console.log("--- TEST 8: WhatsApp Bot Order Tracking Inquiry ---");
+  const botTrackInboundEvent = {
+    object: "whatsapp_business_account",
+    entry: [
+      {
+        id: "WABA_ID",
+        changes: [
+          {
+            value: {
+              messaging_product: "whatsapp",
+              metadata: { phone_number_id: "12345" },
+              contacts: [{ wa_id: "2348099887766", profile: { name: "Chioma" } }],
+              messages: [
+                {
+                  from: "2348099887766",
+                  id: `wamid_track_${Date.now()}`,
+                  timestamp: String(Math.floor(Date.now() / 1000)),
+                  type: "text",
+                  text: { body: `track #${paidOrder?.order_number}` },
+                },
+              ],
+            },
+            field: "messages",
+          },
+        ],
+      },
+    ],
+  };
+
+  const rawBotTrack = JSON.stringify(botTrackInboundEvent);
+  const botTrackSig = "sha256=" + crypto.createHmac("sha256", WHATSAPP_APP_SECRET).update(rawBotTrack).digest("hex");
+
+  const botTrackRes = await fetch(`${BASE_URL}/api/webhooks/whatsapp`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-hub-signature-256": botTrackSig,
+    },
+    body: rawBotTrack,
+  });
+
+  assert(botTrackRes.status === 200, "WhatsApp bot handles tracking inquiry with HTTP 200");
+  const botLog = await prisma.messageNotificationLog.findFirst({
+    where: {
+      order_id: paidOrder?.id,
+      template_name: "bot_text_reply",
+    },
+  });
+  assert(botLog !== null, "WhatsApp bot recorded outgoing text reply in MessageNotificationLog");
+  console.log();
+
+  // --- TEST 9: Admin Support Ticket Management API ---
+  console.log("--- TEST 9: Admin Support Ticket Management API ---");
+  const getTicketsRes = await fetch(`${BASE_URL}/api/admin/tickets`);
+  assert(getTicketsRes.status === 200, "Admin tickets endpoint returns HTTP 200");
+  const ticketsData = await getTicketsRes.json();
+  assert(Array.isArray(ticketsData.tickets) && ticketsData.tickets.length > 0, "Admin tickets endpoint returned tickets array");
+
+  if (ticket) {
+    const updateTicketRes = await fetch(`${BASE_URL}/api/admin/tickets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ticketId: ticket.id, status: "closed" }),
+    });
+    assert(updateTicketRes.status === 200, "Admin updated support ticket status with HTTP 200");
+    const updatedTicketFromDb = await prisma.supportTicket.findUnique({ where: { id: ticket.id } });
+    assert(updatedTicketFromDb?.status === "closed", "Support ticket status updated to 'closed' in DB");
+  }
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");

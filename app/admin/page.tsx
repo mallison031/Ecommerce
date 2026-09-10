@@ -15,6 +15,8 @@ import {
   Search,
   X,
   Loader2,
+  MessageCircle,
+  MessageSquare,
 } from "lucide-react";
 
 interface Order {
@@ -58,11 +60,32 @@ interface NotificationLog {
   };
 }
 
+interface SupportTicket {
+  id: string;
+  whatsapp_phone_e164: string;
+  order_id: string | null;
+  message: string;
+  status: "open" | "escalated" | "closed";
+  created_at: string;
+  order?: {
+    id: string;
+    order_number: number;
+    status: string;
+    total_kobo: number;
+    customer: {
+      name: string;
+      email: string;
+    };
+  } | null;
+}
+
 export default function AdminDashboardPage() {
-  const [activeTab, setActiveTab] = useState<"orders" | "sales" | "notifications">("orders");
+  const [activeTab, setActiveTab] = useState<"orders" | "sales" | "notifications" | "tickets">("orders");
   const [orders, setOrders] = useState<Order[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [ticketFilter, setTicketFilter] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -98,12 +121,41 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const fetchTickets = async () => {
+    try {
+      const url = ticketFilter ? `/api/admin/tickets?status=${ticketFilter}` : "/api/admin/tickets";
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.tickets) setTickets(data.tickets);
+    } catch (e) {
+      console.error("Failed fetching tickets:", e);
+    }
+  };
+
   useEffect(() => {
     fetchOrders();
     if (activeTab === "notifications") {
       fetchLogs();
     }
-  }, [statusFilter, activeTab]);
+    if (activeTab === "tickets") {
+      fetchTickets();
+    }
+  }, [statusFilter, ticketFilter, activeTab]);
+
+  const handleUpdateTicketStatus = async (ticketId: string, newStatus: string) => {
+    try {
+      const res = await fetch("/api/admin/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticketId, status: newStatus }),
+      });
+      if (res.ok) {
+        await fetchTickets();
+      }
+    } catch (e) {
+      console.error("Failed updating ticket:", e);
+    }
+  };
 
   const handleUpdateStatus = async (orderId: string, newStatus: string) => {
     setUpdatingId(orderId);
@@ -219,6 +271,7 @@ export default function AdminDashboardPage() {
             onClick={() => {
               fetchOrders();
               if (activeTab === "notifications") fetchLogs();
+              if (activeTab === "tickets") fetchTickets();
             }}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
           >
@@ -274,6 +327,21 @@ export default function AdminDashboardPage() {
           }`}
         >
           <Bell className="w-4 h-4" /> Notification Logs
+        </button>
+        <button
+          onClick={() => setActiveTab("tickets")}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "tickets"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-400 hover:text-slate-700"
+          }`}
+        >
+          <MessageCircle className="w-4 h-4" /> Support Tickets
+          {tickets.filter((t) => t.status === "open").length > 0 && (
+            <span className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+              {tickets.filter((t) => t.status === "open").length}
+            </span>
+          )}
         </button>
       </div>
 
@@ -533,6 +601,152 @@ export default function AdminDashboardPage() {
                       </td>
                     </tr>
                   ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Support Tickets */}
+      {activeTab === "tickets" && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs font-semibold text-slate-500 mr-1">Filter:</span>
+              {["", "open", "escalated", "closed"].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setTicketFilter(s)}
+                  className={`px-3 py-1 rounded-md text-xs font-medium capitalize transition-all ${
+                    ticketFilter === s
+                      ? "bg-slate-900 text-white"
+                      : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {s || "All"}
+                </button>
+              ))}
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Live WhatsApp customer inquiries routed to support agents.
+            </p>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider">
+                <tr>
+                  <th className="p-3.5">Ticket #</th>
+                  <th className="p-3.5">Customer & WhatsApp</th>
+                  <th className="p-3.5">Message / Inquiry</th>
+                  <th className="p-3.5">Order</th>
+                  <th className="p-3.5">Status</th>
+                  <th className="p-3.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {tickets.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-slate-400">
+                      No support tickets match the current filter.
+                    </td>
+                  </tr>
+                ) : (
+                  tickets.map((ticket) => {
+                    const cleanPhone = ticket.whatsapp_phone_e164.replace(/\D/g, "");
+                    return (
+                      <tr key={ticket.id} className="hover:bg-slate-50/50">
+                        <td className="p-3.5 font-bold font-mono text-slate-900">
+                          #{ticket.id.slice(-6).toUpperCase()}
+                          <div className="text-[10px] font-normal text-slate-400 mt-0.5">
+                            {new Date(ticket.created_at).toLocaleDateString("en-NG", {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </div>
+                        </td>
+                        <td className="p-3.5">
+                          <div className="font-semibold text-slate-900">
+                            {ticket.order?.customer.name || "WhatsApp Guest"}
+                          </div>
+                          <div className="text-slate-600 font-mono text-[11px] mt-0.5">
+                            {ticket.whatsapp_phone_e164}
+                          </div>
+                        </td>
+                        <td className="p-3.5 max-w-sm">
+                          <p className="text-slate-800 line-clamp-2">{ticket.message}</p>
+                        </td>
+                        <td className="p-3.5">
+                          {ticket.order ? (
+                            <div>
+                              <span className="font-bold text-slate-900">#{ticket.order.order_number}</span>
+                              <div className="text-[11px] text-slate-500">
+                                {formatKoboToNaira(ticket.order.total_kobo)}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic">None linked</span>
+                          )}
+                        </td>
+                        <td className="p-3.5">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              ticket.status === "open"
+                                ? "bg-amber-100 text-amber-800"
+                                : ticket.status === "escalated"
+                                ? "bg-rose-100 text-rose-800"
+                                : "bg-emerald-100 text-emerald-800"
+                            }`}
+                          >
+                            {ticket.status}
+                          </span>
+                        </td>
+                        <td className="p-3.5 text-right">
+                          <div className="inline-flex items-center justify-end gap-1.5 flex-wrap">
+                            <a
+                              href={`https://wa.me/${cleanPhone}?text=${encodeURIComponent(
+                                `Hello, this is Aura Store support regarding Ticket #${ticket.id.slice(-6).toUpperCase()}.`
+                              )}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition-colors"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" /> Reply
+                            </a>
+
+                            {ticket.status !== "closed" ? (
+                              <button
+                                onClick={() => handleUpdateTicketStatus(ticket.id, "closed")}
+                                className="px-2 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
+                              >
+                                Close
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleUpdateTicketStatus(ticket.id, "open")}
+                                className="px-2 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
+                              >
+                                Reopen
+                              </button>
+                            )}
+
+                            {ticket.status === "open" && (
+                              <button
+                                onClick={() => handleUpdateTicketStatus(ticket.id, "escalated")}
+                                className="px-2 py-1.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 font-semibold"
+                              >
+                                Escalate
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
