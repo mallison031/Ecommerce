@@ -1103,6 +1103,265 @@ async function runTests() {
   assert(postLogoutRes.status === 401, "Invalidated session token returns HTTP 401 Unauthorized");
   console.log();
 
+  // ==========================================
+  // TEST 20: Return Merchandise Authorization (RMA) & Multi-Item Refund Processing Lifecycle
+  // ==========================================
+  console.log("-------------------------------------------------");
+  console.log("📦 TEST 20: Return Merchandise Authorization (RMA) & Refund Processing");
+  console.log("-------------------------------------------------");
+
+  // 1. Authenticate customer for return testing
+  const returnCustomerEmail = "rma_shopper@auranigeria.com";
+  const rmaOtpSendRes = await fetch(`${BASE_URL}/api/customer/auth/send-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: returnCustomerEmail, name: "Bolanle Williams", phone: "08055554321" }),
+  });
+  assert(rmaOtpSendRes.status === 200, "RMA customer OTP send returns HTTP 200");
+  const rmaOtpData = await rmaOtpSendRes.json();
+  const rmaOtp = rmaOtpData.otp;
+
+  const rmaVerifyRes = await fetch(`${BASE_URL}/api/customer/auth/verify-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: returnCustomerEmail, code: rmaOtp }),
+  });
+  assert(rmaVerifyRes.status === 200, "RMA customer verify-otp returns HTTP 200");
+  const rmaVerifyData = await rmaVerifyRes.json();
+  const rmaToken = rmaVerifyData.token;
+  const rmaAuthHeaders = {
+    Authorization: `Bearer ${rmaToken}`,
+    "Content-Type": "application/json",
+  };
+
+  // 2. Create delivered order for customer to return
+  const testDeliveredOrder = await prisma.order.create({
+    data: {
+      customer_id: rmaVerifyData.customer.id,
+      status: "delivered",
+      subtotal_kobo: product.price_kobo * 2,
+      total_kobo: product.price_kobo * 2,
+      delivery_address: "Plot 14 Admiralty Way, Lekki Phase 1, Lagos",
+      courier_name: "GIG Logistics",
+      tracking_number: "GIG-DEL-77812",
+      delivered_at: new Date(),
+      paid_at: new Date(),
+      items: {
+        create: [
+          {
+            product_id: product.id,
+            product_name_snapshot: product.name,
+            unit_price_kobo_snapshot: product.price_kobo,
+            qty: 2,
+            line_total_kobo: product.price_kobo * 2,
+          },
+        ],
+      },
+      payment: {
+        create: {
+          paystack_reference: `sim_test_rma_${Date.now()}`,
+          status: "success",
+          amount_kobo: product.price_kobo * 2,
+          raw_payload_json: { gateway_response: "Approved", channel: "card" },
+        },
+      },
+    },
+    include: { items: true },
+  });
+  assert(!!testDeliveredOrder.id, "Delivered order for return test created");
+  const orderItemId = testDeliveredOrder.items[0].id;
+
+  // 3. Customer submits Return Request (RMA) for 1 unit
+  const submitRmaRes = await fetch(`${BASE_URL}/api/customer/returns`, {
+    method: "POST",
+    headers: rmaAuthHeaders,
+    body: JSON.stringify({
+      order_id: testDeliveredOrder.id,
+      reason: "damaged_defective",
+      customer_note: "Watch bezel was loose on unboxing",
+      evidence_images: ["https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&q=80"],
+      refund_method: "original_payment",
+      pickup_address: "Plot 14 Admiralty Way, Lekki Phase 1, Lagos",
+      items: [{ order_item_id: orderItemId, qty: 1 }],
+    }),
+  });
+  assert(submitRmaRes.status === 200, "Customer RMA submission returns HTTP 200");
+  const submitRmaData = await submitRmaRes.json();
+  assert(submitRmaData.success === true, "RMA reports success: true");
+  assert(submitRmaData.return_request.rma_number.startsWith("RMA-"), "RMA number formatted with RMA- prefix");
+  assert(submitRmaData.return_request.status === "requested", "Initial RMA status is 'requested'");
+  assert(submitRmaData.return_request.refund_amount_kobo === product.price_kobo, "Refund amount equals item unit price * 1 qty");
+  const createdRmaId = submitRmaData.return_request.id;
+
+  // 4. Customer lists their returns
+  const listReturnsRes = await fetch(`${BASE_URL}/api/customer/returns`, {
+    headers: rmaAuthHeaders,
+  });
+  assert(listReturnsRes.status === 200, "Customer list returns returns HTTP 200");
+  const listReturnsData = await listReturnsRes.json();
+  assert(Array.isArray(listReturnsData.returns), "Customer returns response contains returns array");
+  assert(listReturnsData.returns.some((r: any) => r.id === createdRmaId), "Created RMA is present in customer returns list");
+
+  // 5. Customer gets return details
+  const getRmaDetailsRes = await fetch(`${BASE_URL}/api/customer/returns/${createdRmaId}`, {
+    headers: rmaAuthHeaders,
+  });
+  assert(getRmaDetailsRes.status === 200, "Customer RMA details returns HTTP 200");
+  const getRmaDetailsData = await getRmaDetailsRes.json();
+  assert(getRmaDetailsData.return_request.items.length === 1, "RMA has 1 return item");
+  assert(getRmaDetailsData.return_request.items[0].qty === 1, "Returned qty is 1");
+
+  // 6. Admin lists all returns and filters by status
+  const adminReturnsRes = await fetch(`${BASE_URL}/api/admin/returns?status=requested`);
+  assert(adminReturnsRes.status === 200, "Admin returns listing returns HTTP 200");
+  const adminReturnsData = await adminReturnsRes.json();
+  assert(adminReturnsData.metrics.requested >= 1, "Admin metrics reflect pending requested RMAs");
+  assert(adminReturnsData.returns.some((r: any) => r.id === createdRmaId), "Admin list contains created RMA");
+
+  // 7. Admin Approves Return Request
+  const adminApproveRes = await fetch(`${BASE_URL}/api/admin/returns/${createdRmaId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      status: "approved",
+      return_courier: "GIG Logistics",
+      return_tracking_num: "GIG-RET-88210",
+      admin_notes: "Courier dispatched for item pickup",
+    }),
+  });
+  assert(adminApproveRes.status === 200, "Admin approve RMA returns HTTP 200");
+  const adminApproveData = await adminApproveRes.json();
+  assert(adminApproveData.return_request.status === "approved", "RMA status is now 'approved'");
+  assert(adminApproveData.return_request.return_courier === "GIG Logistics", "Return courier assigned");
+
+  // 8. Admin marks in transit
+  const adminInTransitRes = await fetch(`${BASE_URL}/api/admin/returns/${createdRmaId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      status: "in_transit",
+    }),
+  });
+  assert(adminInTransitRes.status === 200, "Admin mark in-transit returns HTTP 200");
+  const adminInTransitData = await adminInTransitRes.json();
+  assert(adminInTransitData.return_request.status === "in_transit", "RMA status is now 'in_transit'");
+
+  // 9. Admin marks received at warehouse & restocks inventory
+  const preRestockProduct = await prisma.product.findUnique({ where: { id: product.id } });
+  const preStockQty = preRestockProduct?.stock_qty || 0;
+
+  const adminReceivedRes = await fetch(`${BASE_URL}/api/admin/returns/${createdRmaId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      status: "received",
+      restock: true,
+      admin_notes: "Item received at warehouse and verified intact",
+    }),
+  });
+  assert(adminReceivedRes.status === 200, "Admin mark received returns HTTP 200");
+  const adminReceivedData = await adminReceivedRes.json();
+  assert(adminReceivedData.return_request.status === "received", "RMA status is now 'received'");
+  assert(adminReceivedData.return_request.restocked === true, "RMA restocked flag set to true");
+
+  // Verify inventory increment and stock log
+  const postRestockProduct = await prisma.product.findUnique({ where: { id: product.id } });
+  assert((postRestockProduct?.stock_qty || 0) === preStockQty + 1, "Product inventory incremented by 1 returned unit");
+  const stockLog = await prisma.stockAdjustmentLog.findFirst({
+    where: { product_id: product.id, reason: "Customer Return Restock" },
+    orderBy: { created_at: "desc" },
+  });
+  assert(!!stockLog, "StockAdjustmentLog created with reason 'Customer Return Restock'");
+
+  // 10. Admin issues Paystack refund
+  const adminRefundRes = await fetch(`${BASE_URL}/api/admin/returns/${createdRmaId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      status: "refunded",
+    }),
+  });
+  assert(adminRefundRes.status === 200, "Admin process refund returns HTTP 200");
+  const adminRefundData = await adminRefundRes.json();
+  assert(adminRefundData.return_request.status === "refunded", "RMA status is now 'refunded'");
+  assert(!!adminRefundData.return_request.refund_reference, "RMA has refund_reference generated");
+
+  // 11. Store Credit Voucher Return Test
+  const submitCreditRmaRes = await fetch(`${BASE_URL}/api/customer/returns`, {
+    method: "POST",
+    headers: rmaAuthHeaders,
+    body: JSON.stringify({
+      order_id: testDeliveredOrder.id,
+      reason: "changed_mind",
+      refund_method: "store_credit",
+      items: [{ order_item_id: orderItemId, qty: 1 }],
+    }),
+  });
+  assert(submitCreditRmaRes.status === 200, "Customer store credit RMA submission returns HTTP 200");
+  const creditRmaData = await submitCreditRmaRes.json();
+  const creditRmaId = creditRmaData.return_request.id;
+
+  // Process credit refund directly to refunded
+  const adminCreditRefundRes = await fetch(`${BASE_URL}/api/admin/returns/${creditRmaId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      status: "refunded",
+    }),
+  });
+  assert(adminCreditRefundRes.status === 200, "Admin issue store credit refund returns HTTP 200");
+  const adminCreditRefundData = await adminCreditRefundRes.json();
+  assert(adminCreditRefundData.return_request.status === "refunded", "Credit RMA status is 'refunded'");
+  assert(adminCreditRefundData.store_credit_code.startsWith("CREDIT-"), "Store credit coupon code issued");
+
+  // Check that entire order (all 2 units) is now returned/refunded, so order status became returned
+  const finalOrder = await prisma.order.findUnique({ where: { id: testDeliveredOrder.id } });
+  assert(finalOrder?.status === "returned", "Full order status transitioned to 'returned' after all units refunded");
+
+  // 12. Cancellation of pending return request
+  const cancelTestOrder = await prisma.order.create({
+    data: {
+      customer_id: rmaVerifyData.customer.id,
+      status: "delivered",
+      subtotal_kobo: product.price_kobo,
+      total_kobo: product.price_kobo,
+      delivery_address: "Victoria Island, Lagos",
+      items: {
+        create: [
+          {
+            product_id: product.id,
+            product_name_snapshot: product.name,
+            unit_price_kobo_snapshot: product.price_kobo,
+            qty: 1,
+            line_total_kobo: product.price_kobo,
+          },
+        ],
+      },
+    },
+    include: { items: true },
+  });
+
+  const submitCancelRmaRes = await fetch(`${BASE_URL}/api/customer/returns`, {
+    method: "POST",
+    headers: rmaAuthHeaders,
+    body: JSON.stringify({
+      order_id: cancelTestOrder.id,
+      reason: "other",
+      refund_method: "original_payment",
+      items: [{ order_item_id: cancelTestOrder.items[0].id, qty: 1 }],
+    }),
+  });
+  const cancelRmaId = (await submitCancelRmaRes.json()).return_request.id;
+
+  const cancelReqRes = await fetch(`${BASE_URL}/api/customer/returns/${cancelRmaId}/cancel`, {
+    method: "POST",
+    headers: rmaAuthHeaders,
+  });
+  assert(cancelReqRes.status === 200, "Customer cancel return request returns HTTP 200");
+  const cancelReqData = await cancelReqRes.json();
+  assert(cancelReqData.return_request.status === "cancelled", "Return request status is 'cancelled'");
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");

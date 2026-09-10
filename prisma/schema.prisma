@@ -24,6 +24,30 @@ enum SupportTicketStatus {
   closed
 }
 
+enum ReturnStatus {
+  requested
+  approved
+  rejected
+  in_transit
+  received
+  refunded
+  cancelled
+}
+
+enum ReturnReason {
+  damaged_defective
+  wrong_item_delivered
+  quality_not_as_expected
+  size_fit_issue
+  changed_mind
+  other
+}
+
+enum RefundMethod {
+  original_payment
+  store_credit
+}
+
 enum AdminRole {
   owner
   staff
@@ -66,6 +90,7 @@ model Product {
   reviews         ProductReview[]
   adjustment_logs StockAdjustmentLog[]
   stock_waitlist  StockWaitlist[]
+  return_items    ReturnItem[]
   created_at      DateTime    @default(now())
   updated_at  DateTime    @updatedAt
 
@@ -82,6 +107,7 @@ model Customer {
   orders              Order[]
   addresses           CustomerAddress[]
   sessions            CustomerSession[]
+  return_requests     ReturnRequest[]
   created_at          DateTime          @default(now())
   updated_at          DateTime          @updatedAt
 
@@ -117,6 +143,7 @@ model Order {
   sales_ledger     SalesLedgerEntry?
   notifications    MessageNotificationLog[]
   support_tickets  SupportTicket[]
+  return_requests  ReturnRequest[]
 
   @@index([customer_id])
   @@index([status])
@@ -135,6 +162,7 @@ model OrderItem {
   unit_price_kobo_snapshot  Int
   qty                       Int
   line_total_kobo           Int
+  return_items              ReturnItem[]
 
   @@index([order_id])
   @@index([product_id])
@@ -317,5 +345,58 @@ model CustomerSession {
 
   @@index([customer_id])
   @@index([token])
+}
+
+model ReturnRequest {
+  id                  String         @id @default(cuid())
+  rma_number          String         @unique // e.g. "RMA-2026-0001"
+  order_id            String
+  order               Order          @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  customer_id         String
+  customer            Customer       @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  status              ReturnStatus   @default(requested)
+  reason              ReturnReason
+  customer_note       String?
+  evidence_images     String[]       // Evidence photo URLs or proof strings
+  refund_method       RefundMethod   @default(original_payment)
+  pickup_address      String?
+  return_courier      String?        // e.g. "GIG Logistics", "Fez Delivery", "Speedaf", "Gokada", "DHL"
+  return_tracking_num String?
+  admin_notes         String?
+  rejection_reason    String?
+  refund_amount_kobo  Int            @default(0)
+  refund_reference    String?        // Paystack refund ID or Store Credit promo code
+  restocked           Boolean        @default(false)
+  approved_at         DateTime?
+  in_transit_at       DateTime?
+  received_at         DateTime?
+  refunded_at         DateTime?
+  created_at          DateTime       @default(now())
+  updated_at          DateTime       @updatedAt
+
+  items               ReturnItem[]
+
+  @@index([order_id])
+  @@index([customer_id])
+  @@index([status])
+  @@index([rma_number])
+}
+
+model ReturnItem {
+  id                    String        @id @default(cuid())
+  return_request_id     String
+  return_request        ReturnRequest @relation(fields: [return_request_id], references: [id], onDelete: Cascade)
+  order_item_id         String
+  order_item            OrderItem     @relation(fields: [order_item_id], references: [id], onDelete: Cascade)
+  product_id            String?
+  product               Product?      @relation(fields: [product_id], references: [id], onDelete: SetNull)
+  product_name_snapshot String
+  unit_price_kobo       Int
+  qty                   Int
+  item_refund_kobo      Int
+
+  @@index([return_request_id])
+  @@index([order_item_id])
+  @@index([product_id])
 }
 

@@ -40,7 +40,9 @@ import {
   Archive,
   History,
   Sliders,
+  RefreshCcw,
 } from "lucide-react";
+import AdminReturnsTab from "@/components/admin/admin-returns-tab";
 
 interface Order {
   id: string;
@@ -125,7 +127,7 @@ interface AbandonedOrder {
 
 export default function AdminDashboardPage() {
   const [activeTab, setActiveTab] = useState<
-    "orders" | "sales" | "inventory" | "notifications" | "tickets" | "abandoned" | "promotions" | "reviews"
+    "orders" | "sales" | "inventory" | "notifications" | "tickets" | "abandoned" | "promotions" | "reviews" | "returns"
   >("orders");
   const [orders, setOrders] = useState<Order[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
@@ -968,6 +970,16 @@ export default function AdminDashboardPage() {
               {reviewMetrics.pendingCount} pending
             </span>
           )}
+        </button>
+        <button
+          onClick={() => setActiveTab("returns")}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "returns"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-400 hover:text-slate-700"
+          }`}
+        >
+          <RefreshCcw className="w-4 h-4 text-purple-600" /> Returns (RMA)
         </button>
       </div>
 
@@ -2862,6 +2874,9 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Returns (RMA) Management Tab */}
+      {activeTab === "returns" && <AdminReturnsTab />}
 
       {/* QUICK RESTOCK / ADJUSTMENT MODAL */}
       {restockingProduct && (
