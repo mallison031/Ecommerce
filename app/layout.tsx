@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ShoppingBag, MessageCircle } from "lucide-react";
 import { HeaderCartButton } from "@/components/header-cart-button";
 import { HeaderWishlistButton } from "@/components/header-wishlist-button";
+import { HeaderSearchBar } from "@/components/header-search-bar";
 
 export const metadata: Metadata = {
   title: "Aura Essentials | Curated Multi-Sector Storefront",
@@ -30,29 +31,32 @@ export default function RootLayout({
 
             {/* Navigation Bar */}
             <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200">
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-                <Link href="/" className="text-xl font-bold tracking-tight text-slate-900">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2 sm:gap-4">
+                <Link href="/" className="text-xl font-bold tracking-tight text-slate-900 shrink-0">
                   Aura<span className="text-pink-600">.</span>Store
                 </Link>
 
-                {/* Sector Navigation */}
-                <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
-                  <Link href="/#jewelry-accessories" className="hover:text-slate-900 transition-colors">
-                    Jewelry & Accessories
+                {/* Global Predictive Search Bar */}
+                <HeaderSearchBar />
+
+                {/* Sector Navigation (on large screens) */}
+                <nav className="hidden xl:flex items-center gap-5 text-xs font-semibold text-slate-600 shrink-0">
+                  <Link href="/#jewelry-accessories" className="hover:text-pink-600 transition-colors">
+                    Jewelry
                   </Link>
-                  <Link href="/#girly-essentials" className="hover:text-slate-900 transition-colors">
+                  <Link href="/#girly-essentials" className="hover:text-pink-600 transition-colors">
                     Girly Essentials
                   </Link>
-                  <Link href="/#content-accessories" className="hover:text-slate-900 transition-colors">
-                    Content Accessories
+                  <Link href="/#content-accessories" className="hover:text-pink-600 transition-colors">
+                    Content Gadgets
                   </Link>
-                  <Link href="/#kitchen-souvenirs" className="hover:text-slate-900 transition-colors">
-                    Kitchen/Souvenirs
+                  <Link href="/#kitchen-souvenirs" className="hover:text-pink-600 transition-colors">
+                    Kitchen
                   </Link>
                 </nav>
 
                 {/* Header Actions */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3 shrink-0">
                   {/* Track Order */}
                   <Link
                     href="/track-order"

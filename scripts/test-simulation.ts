@@ -874,6 +874,92 @@ async function runTests() {
   assert(revertData.product.stock_qty === invInitialStock, "Product stock reverted to initial value");
   console.log();
 
+  // ==========================================
+  // TEST 18: GLOBAL SEARCH, PREDICTIVE AUTOCOMPLETE & MULTI-FACETED FILTERS
+  // ==========================================
+  console.log("--- TEST 18: Global Search, Predictive Autocomplete & Multi-Faceted Filters ---");
+
+  // 1. Predictive Autocomplete Search
+  const autocompleteRes = await fetch(`${BASE_URL}/api/search?q=lip&type=autocomplete&limit=5`);
+  assert(autocompleteRes.status === 200, "Autocomplete search endpoint returns HTTP 200");
+  const autocompleteData = await autocompleteRes.json();
+  assert(autocompleteData.success === true, "Autocomplete response reports success: true");
+  assert(Array.isArray(autocompleteData.products), "Autocomplete returns products array");
+  assert(autocompleteData.products.length >= 1, "Autocomplete finds matches for 'lip'");
+  const sampleAuto = autocompleteData.products[0];
+  assert(typeof sampleAuto.name === "string", "Autocomplete product has name");
+  assert(typeof sampleAuto.price_kobo === "number", "Autocomplete product has price_kobo");
+  assert(typeof sampleAuto.stockStatus === "string", "Autocomplete product has stockStatus pill");
+  assert(typeof sampleAuto.sector_slug === "string", "Autocomplete product has sector_slug");
+  assert(Array.isArray(autocompleteData.sectorSuggestions), "Autocomplete returns sectorSuggestions array");
+
+  // 2. Full Catalog Search & Facet Metadata
+  const fullSearchRes = await fetch(`${BASE_URL}/api/search?q=a`);
+  assert(fullSearchRes.status === 200, "Full search endpoint returns HTTP 200");
+  const fullSearchData = await fullSearchRes.json();
+  assert(fullSearchData.totalCount >= 1, "Full search finds products matching query 'a'");
+  assert(Array.isArray(fullSearchData.sectorFacets), "Search returns sector facets");
+  assert(fullSearchData.sectorFacets.length === 4, "Sector facets cover all 4 store sectors");
+
+  // 3. Sector Filter
+  const sectorSearchRes = await fetch(`${BASE_URL}/api/search?sector=jewelry`);
+  assert(sectorSearchRes.status === 200, "Sector search filter returns HTTP 200");
+  const sectorSearchData = await sectorSearchRes.json();
+  assert(Array.isArray(sectorSearchData.products), "Sector search returns products array");
+  assert(
+    sectorSearchData.products.every((p: any) => p.sector_slug === "jewelry"),
+    "Sector filter returns strictly products in 'jewelry' sector"
+  );
+
+  // 4. Price Range Bounds Filter (₦10,000 to ₦45,000)
+  const priceFilterRes = await fetch(`${BASE_URL}/api/search?min_price=10000&max_price=45000`);
+  assert(priceFilterRes.status === 200, "Price range filter returns HTTP 200");
+  const priceFilterData = await priceFilterRes.json();
+  assert(
+    priceFilterData.products.every(
+      (p: any) => p.price_kobo >= 1000000 && p.price_kobo <= 4500000
+    ),
+    "Price range filter strictly respects min and max price bounds in kobo"
+  );
+
+  // 5. In-Stock Only Filter
+  const inStockSearchRes = await fetch(`${BASE_URL}/api/search?in_stock=true`);
+  assert(inStockSearchRes.status === 200, "In-stock filter returns HTTP 200");
+  const inStockSearchData = await inStockSearchRes.json();
+  assert(
+    inStockSearchData.products.every((p: any) => p.stock_qty > 0 && p.stockStatus !== "out_of_stock"),
+    "In-stock filter excludes all zero-stock products"
+  );
+
+  // 6. Sorting by Price Ascending & Descending
+  const sortAscRes = await fetch(`${BASE_URL}/api/search?sort=price_asc`);
+  assert(sortAscRes.status === 200, "Price ascending sort returns HTTP 200");
+  const sortAscData = await sortAscRes.json();
+  for (let i = 1; i < sortAscData.products.length; i++) {
+    assert(
+      sortAscData.products[i].price_kobo >= sortAscData.products[i - 1].price_kobo,
+      "Products are ordered in non-decreasing price order"
+    );
+  }
+
+  const sortDescRes = await fetch(`${BASE_URL}/api/search?sort=price_desc`);
+  assert(sortDescRes.status === 200, "Price descending sort returns HTTP 200");
+  const sortDescData = await sortDescRes.json();
+  for (let i = 1; i < sortDescData.products.length; i++) {
+    assert(
+      sortDescData.products[i].price_kobo <= sortDescData.products[i - 1].price_kobo,
+      "Products are ordered in non-increasing price order"
+    );
+  }
+
+  // 7. Non-existent query term handling
+  const noMatchRes = await fetch(`${BASE_URL}/api/search?q=xyzsupercalifragilisticnomatch999`);
+  assert(noMatchRes.status === 200, "Unmatched search query returns HTTP 200");
+  const noMatchData = await noMatchRes.json();
+  assert(noMatchData.products.length === 0, "No products returned for impossible search term");
+  assert(noMatchData.totalCount === 0, "Total count is zero for unmatched search");
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");
