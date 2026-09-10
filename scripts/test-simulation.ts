@@ -483,6 +483,106 @@ async function runTests() {
   assert(shippingCheckoutData.totalKobo === product.price_kobo + 400000, "Order total correctly includes item price and shipping fee");
   console.log();
 
+  // --- TEST 13: Promotions, Discount Coupons & Sector Flash Sales Engine ---
+  console.log("--- TEST 13: Promotions, Discount Coupons & Sector Flash Sales Engine ---");
+  // 1. Validate valid percentage coupon WELCOME10
+  const validCouponRes = await fetch(`${BASE_URL}/api/coupons/validate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: "WELCOME10", subtotalKobo: 1000000 }),
+  });
+  assert(validCouponRes.status === 200, "Valid coupon validation returns HTTP 200");
+  const validCouponData = await validCouponRes.json();
+  assert(validCouponData.valid === true, "WELCOME10 is reported as valid");
+  assert(validCouponData.discountKobo === 100000, "10% discount on ₦10,000 is ₦1,000 (100,000 kobo)");
+  assert(validCouponData.finalSubtotalKobo === 900000, "Final subtotal after 10% discount is ₦9,000");
+
+  // 2. Validate below minimum spend
+  const minSpendFailRes = await fetch(`${BASE_URL}/api/coupons/validate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: "WELCOME10", subtotalKobo: 200000 }),
+  });
+  assert(minSpendFailRes.status === 200, "Validation endpoint responds 200 with valid: false for below min spend");
+  const minSpendFailData = await minSpendFailRes.json();
+  assert(minSpendFailData.valid === false, "WELCOME10 rejected when subtotal is below ₦5,000 min spend");
+
+  // 3. Validate sector restriction
+  const sectorFailRes = await fetch(`${BASE_URL}/api/coupons/validate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: "JEWELRY15", subtotalKobo: 2000000, sectorSlug: "kitchen-souvenirs" }),
+  });
+  const sectorFailData = await sectorFailRes.json();
+  assert(sectorFailData.valid === false, "JEWELRY15 rejected when applied outside jewelry sector");
+
+  // 4. Validate Free Shipping coupon
+  const freeShipCouponRes = await fetch(`${BASE_URL}/api/coupons/validate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: "FREESHIP", subtotalKobo: 1500000, currentShippingFeeKobo: 250000 }),
+  });
+  const freeShipCouponData = await freeShipCouponRes.json();
+  assert(freeShipCouponData.valid === true, "FREESHIP coupon validated successfully");
+  assert(freeShipCouponData.shippingDiscountKobo === 250000, "FREESHIP waives the full ₦2,500 shipping fee");
+
+  // 5. Admin Coupons API & New Coupon Creation
+  const adminCouponsGetRes = await fetch(`${BASE_URL}/api/admin/coupons`);
+  assert(adminCouponsGetRes.status === 200, "Admin coupons endpoint returns HTTP 200");
+  const adminCouponsGetData = await adminCouponsGetRes.json();
+  assert(adminCouponsGetData.success === true, "Admin coupons query succeeds");
+  assert(adminCouponsGetData.stats.totalCoupons >= 6, "Admin reports at least 6 configured coupons");
+  assert(adminCouponsGetData.flashSales.length >= 1, "Admin reports active sector flash sales");
+
+  const createCouponRes = await fetch(`${BASE_URL}/api/admin/coupons`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      code: "SIMULATION25",
+      discountType: "PERCENTAGE",
+      discountValue: 25,
+      minSpendKobo: 500000,
+      description: "Simulation 25% discount voucher",
+    }),
+  });
+  assert(createCouponRes.status === 200, "Admin coupon creation returns HTTP 200");
+  const createCouponData = await createCouponRes.json();
+  assert(createCouponData.success === true && createCouponData.coupon.code === "SIMULATION25", "SIMULATION25 successfully created");
+
+  // Validate newly created coupon
+  const testNewCouponRes = await fetch(`${BASE_URL}/api/coupons/validate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: "SIMULATION25", subtotalKobo: 1000000 }),
+  });
+  const testNewCouponData = await testNewCouponRes.json();
+  assert(testNewCouponData.valid === true, "Newly created SIMULATION25 coupon is immediately valid");
+  assert(testNewCouponData.discountKobo === 250000, "25% discount correctly applied (250,000 kobo)");
+
+  // 6. Checkout with coupon code
+  const couponCheckoutRes = await fetch(`${BASE_URL}/api/checkout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "Tariq Danjuma",
+      email: "tariq.danjuma@example.com",
+      phone: "08031234567",
+      deliveryAddress: "14 Admiralty Way, Lekki Phase 1",
+      state: "Lagos",
+      lagosZone: "lagos_island",
+      couponCode: "WELCOME10",
+      whatsappOptIn: true,
+      items: [{ productId: product.id, quantity: 1 }],
+    }),
+  });
+  assert(couponCheckoutRes.status === 200, "Checkout with valid coupon returns HTTP 200");
+  const couponCheckoutData = await couponCheckoutRes.json();
+  const expectedDiscount = Math.round((product.price_kobo * 10) / 100);
+  assert(couponCheckoutData.couponCode === "WELCOME10", "Order confirms WELCOME10 coupon applied");
+  assert(couponCheckoutData.couponDiscountKobo === expectedDiscount, "Order confirms 10% coupon discount applied to total");
+  assert(couponCheckoutData.totalKobo === (product.price_kobo - expectedDiscount) + 250000, "Final order total reflects product price minus coupon discount plus shipping");
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");

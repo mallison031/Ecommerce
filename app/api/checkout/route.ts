@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { initializePaystackTransaction } from "@/lib/paystack";
 import { formatToE164 } from "@/lib/utils";
 import { calculateShippingFee } from "@/lib/shipping";
+import { validateCoupon, recordCouponRedemption } from "@/lib/promotions";
 import { z } from "zod";
 
 const checkoutSchema = z.object({
@@ -13,6 +14,7 @@ const checkoutSchema = z.object({
   state: z.string().optional(),
   lagosZone: z.enum(["lagos_mainland", "lagos_island"]).optional(),
   isExpress: z.boolean().optional().default(false),
+  couponCode: z.string().optional(),
   whatsappOptIn: z.boolean().default(false),
   items: z
     .array(
@@ -36,8 +38,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { name, email, phone, deliveryAddress, state, lagosZone, isExpress, whatsappOptIn, items } =
-      parsed.data;
+    const {
+      name,
+      email,
+      phone,
+      deliveryAddress,
+      state,
+      lagosZone,
+      isExpress,
+      couponCode,
+      whatsappOptIn,
+      items,
+    } = parsed.data;
 
     // Fetch product information
     const productIds = items.map((i) => i.productId);
@@ -89,7 +101,31 @@ export async function POST(req: NextRequest) {
       isFreeDelivery = shippingCalc.isFreeDelivery;
     }
 
-    const totalKobo = subtotalKobo + shippingFeeKobo;
+    // Apply optional promo coupon
+    let couponDiscountKobo = 0;
+    let shippingDiscountKobo = 0;
+    let appliedCouponCode: string | null = null;
+
+    if (couponCode && couponCode.trim()) {
+      const couponRes = validateCoupon({
+        code: couponCode,
+        subtotalKobo,
+        currentShippingFeeKobo: shippingFeeKobo,
+      });
+
+      if (!couponRes.valid) {
+        return NextResponse.json({ error: couponRes.message }, { status: 400 });
+      }
+
+      couponDiscountKobo = couponRes.discountKobo;
+      shippingDiscountKobo = couponRes.shippingDiscountKobo;
+      appliedCouponCode = couponRes.coupon?.code || couponCode.toUpperCase();
+      shippingFeeKobo = Math.max(0, shippingFeeKobo - shippingDiscountKobo);
+      recordCouponRedemption(couponCode);
+    }
+
+    const finalSubtotalKobo = Math.max(0, subtotalKobo - couponDiscountKobo);
+    const totalKobo = finalSubtotalKobo + shippingFeeKobo;
 
     // Format phone to E.164 if WhatsApp opted in
     const formattedPhone = whatsappOptIn ? formatToE164(phone) : null;
@@ -145,6 +181,8 @@ export async function POST(req: NextRequest) {
         orderId: order.id,
         orderNumber: order.order_number,
         subtotalKobo,
+        couponCode: appliedCouponCode,
+        couponDiscountKobo,
         shippingFeeKobo,
         isFreeDelivery,
         deliverySla,
@@ -158,6 +196,8 @@ export async function POST(req: NextRequest) {
       orderNumber: order.order_number,
       orderId: order.id,
       subtotalKobo,
+      couponCode: appliedCouponCode,
+      couponDiscountKobo,
       shippingFeeKobo,
       totalKobo,
       deliverySla,
