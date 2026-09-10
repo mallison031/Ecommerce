@@ -1,0 +1,216 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum OrderStatus {
+  pending_payment
+  paid
+  shipped
+  delivered
+  abandoned
+  cancelled
+  refunded
+  returned
+}
+
+enum SupportTicketStatus {
+  open
+  escalated
+  closed
+}
+
+enum AdminRole {
+  owner
+  staff
+}
+
+enum NotificationChannel {
+  whatsapp
+  email
+}
+
+enum NotificationStatus {
+  sent
+  failed
+  skipped
+}
+
+model Sector {
+  id            String    @id @default(cuid())
+  name          String
+  slug          String    @unique
+  display_order Int       @default(0)
+  products      Product[]
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+}
+
+model Product {
+  id          String      @id @default(cuid())
+  sector_id   String
+  sector      Sector      @relation(fields: [sector_id], references: [id])
+  name        String
+  slug        String      @unique
+  description String
+  price_kobo  Int
+  currency    String      @default("NGN")
+  stock_qty   Int         @default(0)
+  image_urls  String[]
+  is_active   Boolean     @default(true)
+  order_items OrderItem[]
+  created_at  DateTime    @default(now())
+  updated_at  DateTime    @updatedAt
+
+  @@index([sector_id])
+}
+
+model Customer {
+  id                  String   @id @default(cuid())
+  name                String
+  phone               String
+  email               String   @unique
+  whatsapp_opt_in     Boolean  @default(false)
+  whatsapp_phone_e164 String?
+  orders              Order[]
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  @@index([email])
+  @@index([whatsapp_phone_e164])
+}
+
+model Order {
+  id               String            @id @default(cuid())
+  order_number     Int               @unique @default(autoincrement())
+  customer_id      String
+  customer         Customer          @relation(fields: [customer_id], references: [id])
+  status           OrderStatus       @default(pending_payment)
+  subtotal_kobo    Int
+  total_kobo       Int
+  currency         String            @default("NGN")
+  delivery_address String
+  paid_at          DateTime?
+  reminder_sent_at DateTime?
+  abandoned_at     DateTime?
+  created_at       DateTime          @default(now())
+  updated_at       DateTime          @updatedAt
+
+  items            OrderItem[]
+  payment          Payment?
+  invoice          Invoice?
+  receipt          Receipt?
+  sales_ledger     SalesLedgerEntry?
+  notifications    MessageNotificationLog[]
+  support_tickets  SupportTicket[]
+
+  @@index([customer_id])
+  @@index([status])
+  @@index([order_number])
+  @@index([created_at])
+}
+
+model OrderItem {
+  id                        String  @id @default(cuid())
+  order_id                  String
+  order                     Order   @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  product_id                String?
+  product                   Product? @relation(fields: [product_id], references: [id], onDelete: SetNull)
+  product_name_snapshot     String
+  unit_price_kobo_snapshot  Int
+  qty                       Int
+  line_total_kobo           Int
+
+  @@index([order_id])
+  @@index([product_id])
+}
+
+model Payment {
+  id                 String   @id @default(cuid())
+  order_id           String   @unique
+  order              Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  paystack_reference String   @unique
+  status             String
+  amount_kobo        Int
+  verified_at        DateTime @default(now())
+  raw_payload_json   Json
+
+  @@index([paystack_reference])
+}
+
+model Invoice {
+  id             String   @id @default(cuid())
+  order_id       String   @unique
+  order          Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  invoice_number Int      @unique @default(autoincrement())
+  pdf_url        String?
+  issued_at      DateTime @default(now())
+
+  @@index([invoice_number])
+}
+
+model Receipt {
+  id             String   @id @default(cuid())
+  order_id       String   @unique
+  order          Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  receipt_number Int      @unique @default(autoincrement())
+  pdf_url        String?
+  issued_at      DateTime @default(now())
+
+  @@index([receipt_number])
+}
+
+model SalesLedgerEntry {
+  id                    String   @id @default(cuid())
+  order_id              String   @unique
+  order                 Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  amount_kobo           Int
+  sector_breakdown_json Json
+  recorded_at           DateTime @default(now())
+
+  @@index([recorded_at])
+}
+
+model SupportTicket {
+  id                  String              @id @default(cuid())
+  whatsapp_phone_e164 String
+  order_id            String?
+  order               Order?              @relation(fields: [order_id], references: [id], onDelete: SetNull)
+  message             String
+  status              SupportTicketStatus @default(open)
+  created_at          DateTime            @default(now())
+  updated_at          DateTime            @updatedAt
+
+  @@index([whatsapp_phone_e164])
+  @@index([status])
+}
+
+model AdminUser {
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  password_hash       String
+  role                AdminRole @default(owner)
+  whatsapp_phone_e164 String?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+
+  @@index([whatsapp_phone_e164])
+}
+
+model MessageNotificationLog {
+  id            String              @id @default(cuid())
+  order_id      String
+  order         Order               @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  channel       NotificationChannel
+  template_name String?
+  status        NotificationStatus
+  created_at    DateTime            @default(now())
+
+  @@index([order_id])
+  @@index([channel])
+  @@index([status])
+}
