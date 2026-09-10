@@ -9,8 +9,16 @@ export async function GET(
   try {
     const { id } = params;
 
-    const order = await prisma.order.findUnique({
-      where: { id },
+    // Search by order id or invoice number or order number
+    const order = await prisma.order.findFirst({
+      where: {
+        OR: [
+          { id },
+          { invoice: { id } },
+          { invoice: { invoice_number: !isNaN(Number(id)) ? Number(id) : -1 } },
+          { order_number: !isNaN(Number(id)) ? Number(id) : -1 },
+        ],
+      },
       include: {
         customer: true,
         items: true,
@@ -21,28 +29,21 @@ export async function GET(
     });
 
     if (!order) {
-      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+      return NextResponse.json({ error: "Invoice or order not found" }, { status: 404 });
     }
 
     if (order.status !== "paid" && order.status !== "shipped" && order.status !== "delivered") {
       return NextResponse.json(
-        { error: "Document is only available for confirmed and paid orders." },
+        { error: "Invoice is only available for confirmed and paid orders." },
         { status: 400 }
       );
     }
 
-    const docTypeParam = (req.nextUrl.searchParams.get("type") || "receipt").toLowerCase();
-    const isInvoice = docTypeParam === "invoice";
-    const isPackingSlip = docTypeParam === "packing_slip";
-
-    const docType = isInvoice ? "INVOICE" : isPackingSlip ? "PACKING_SLIP" : "RECEIPT";
-    const documentNumber = isInvoice
-      ? (order.invoice?.invoice_number || order.order_number)
-      : (order.receipt?.receipt_number || order.order_number);
+    const invoiceNumber = order.invoice?.invoice_number || order.order_number;
 
     const pdfBytes = await generateDocumentPdf({
-      type: docType,
-      documentNumber,
+      type: "INVOICE",
+      documentNumber: invoiceNumber,
       orderNumber: order.order_number,
       date: order.paid_at || order.created_at,
       customerName: order.customer.name,
@@ -63,13 +64,10 @@ export async function GET(
     });
 
     const buffer = Buffer.from(pdfBytes);
-    const prefix = isInvoice ? "invoice" : isPackingSlip ? "packing-slip" : "receipt";
-    const filename = `${prefix}-${order.order_number}.pdf`;
-
     return new Response(buffer, {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Disposition": `attachment; filename="invoice-${order.order_number}.pdf"`,
       },
     });
   } catch (err: unknown) {

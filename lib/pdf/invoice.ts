@@ -1,5 +1,9 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
-import { formatKoboToNaira } from "@/lib/utils";
+
+function formatKoboForPdf(kobo: number): string {
+  const naira = kobo / 100;
+  return `NGN ${naira.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 export interface InvoiceReceiptData {
   type: "INVOICE" | "RECEIPT" | "PACKING_SLIP";
@@ -191,7 +195,7 @@ export async function generateDocumentPdf(data: InvoiceReceiptData): Promise<Uin
       color: darkColor,
     });
 
-    page.drawText(formatKoboToNaira(item.unitPriceKobo), {
+    page.drawText(formatKoboForPdf(item.unitPriceKobo), {
       x: 390,
       y,
       size: 10,
@@ -199,7 +203,7 @@ export async function generateDocumentPdf(data: InvoiceReceiptData): Promise<Uin
       color: darkColor,
     });
 
-    page.drawText(formatKoboToNaira(item.lineTotalKobo), {
+    page.drawText(formatKoboForPdf(item.lineTotalKobo), {
       x: 480,
       y,
       size: 10,
@@ -228,7 +232,7 @@ export async function generateDocumentPdf(data: InvoiceReceiptData): Promise<Uin
     color: primaryColor,
   });
 
-  page.drawText(formatKoboToNaira(data.totalKobo), {
+  page.drawText(formatKoboForPdf(data.totalKobo), {
     x: 480,
     y,
     size: 12,

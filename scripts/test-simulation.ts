@@ -708,6 +708,67 @@ async function runTests() {
   assert(typeof verifiedProd.sectorSlug === "string", "Verified item includes sector slug for routing");
   console.log();
 
+  // ==========================================
+  // TEST 16: Sales Accounting Ledger, Sector Attribution & Sequential Invoicing
+  // ==========================================
+  console.log("TEST 16: Sales Accounting Ledger, Sector Financial Reporting & Invoicing...");
+
+  // 1. Fetch sales endpoint
+  const salesRes = await fetch(`${BASE_URL}/api/admin/sales`);
+  assert(salesRes.status === 200, "Sales API returns HTTP 200");
+  const salesData = await salesRes.json();
+  assert(salesData.metrics !== undefined, "Sales response includes comprehensive financial metrics");
+  assert(typeof salesData.metrics.grossRevenueKobo === "number", "Gross revenue is numeric kobo");
+  assert(salesData.metrics.grossRevenueKobo > 0, "Gross revenue is non-zero after paid order simulation");
+  assert(salesData.metrics.paidOrdersCount >= 1, "Paid orders count tracks confirmed orders");
+  assert(typeof salesData.metrics.averageOrderValueKobo === "number", "AOV metric is numeric kobo");
+  assert(salesData.metrics.totalUnitsSold >= 1, "Total units sold tracks inventory volume");
+  assert(Array.isArray(salesData.sectorBreakdown), "Sector breakdown is an array");
+  assert(salesData.sectorBreakdown.length === 4, "Sector breakdown covers all 4 store sectors");
+
+  // 2. Sector filtering
+  const sectorFilterRes = await fetch(`${BASE_URL}/api/admin/sales?sector=jewelry`);
+  assert(sectorFilterRes.status === 200, "Sales sector filter returns HTTP 200");
+  const sectorFilteredData = await sectorFilterRes.json();
+  assert(Array.isArray(sectorFilteredData.orders), "Filtered sector returns orders array");
+
+  // 3. Status filtering
+  const statusFilterRes = await fetch(`${BASE_URL}/api/admin/sales?status=paid`);
+  assert(statusFilterRes.status === 200, "Sales status filter returns HTTP 200");
+  const statusFilteredData = await statusFilterRes.json();
+  assert(
+    statusFilteredData.orders.every((o: any) => o.status === "paid"),
+    "Status filter returns strictly paid orders"
+  );
+
+  // 4. CSV Exports (Master Sales & Sector Accounting)
+  const masterCsvRes = await fetch(`${BASE_URL}/api/admin/sales?format=csv`);
+  assert(masterCsvRes.status === 200, "Master Sales CSV export returns HTTP 200");
+  const masterCsvText = await masterCsvRes.text();
+  assert(masterCsvText.includes("Order Number,Date,Customer Name"), "Master CSV contains required bookkeeping headers");
+  assert(masterCsvText.includes("Invoice Number,Receipt Number"), "Master CSV includes invoice and receipt document numbers");
+
+  const sectorCsvRes = await fetch(`${BASE_URL}/api/admin/sales?format=sector_csv`);
+  assert(sectorCsvRes.status === 200, "Sector Accounting CSV export returns HTTP 200");
+  const sectorCsvText = await sectorCsvRes.text();
+  assert(sectorCsvText.includes("Sector Name,Sector Slug,Units Sold,Revenue (NGN)"), "Sector CSV contains sector accounting headers");
+
+  // 5. Sequential Invoicing & Official Receipt PDF Downloads
+  if (paidOrder) {
+    const invoicePdfRes = await fetch(`${BASE_URL}/api/orders/${paidOrder.id}/receipt?type=invoice`);
+    assert(invoicePdfRes.status === 200, "Official Invoice PDF returns HTTP 200");
+    assert(invoicePdfRes.headers.get("content-type") === "application/pdf", "Invoice endpoint returns application/pdf content type");
+
+    const receiptPdfRes = await fetch(`${BASE_URL}/api/orders/${paidOrder.id}/receipt?type=receipt`);
+    assert(receiptPdfRes.status === 200, "Official Receipt PDF returns HTTP 200");
+    assert(receiptPdfRes.headers.get("content-type") === "application/pdf", "Receipt endpoint returns application/pdf content type");
+
+    const adminInvoiceRes = await fetch(`${BASE_URL}/api/admin/invoices/${paidOrder.id}`);
+    assert(adminInvoiceRes.status === 200, "Admin invoice route alias returns HTTP 200");
+    assert(adminInvoiceRes.headers.get("content-type") === "application/pdf", "Admin invoice alias returns application/pdf");
+  }
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");

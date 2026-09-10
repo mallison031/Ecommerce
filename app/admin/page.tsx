@@ -30,6 +30,12 @@ import {
   Trash2,
   Eye,
   EyeOff,
+  TrendingUp,
+  BarChart3,
+  PieChart,
+  Calendar,
+  DollarSign,
+  FileSpreadsheet,
 } from "lucide-react";
 
 interface Order {
@@ -180,6 +186,130 @@ export default function AdminDashboardPage() {
   const [loadingReviews, setLoadingReviews] = useState(false);
   const [togglingReviewId, setTogglingReviewId] = useState<string | null>(null);
   const [adminPhotoZoom, setAdminPhotoZoom] = useState<string | null>(null);
+
+  // Sales & Accounting Ledger State
+  interface SectorBreakdownItem {
+    id: string;
+    name: string;
+    slug: string;
+    unitsSold: number;
+    revenueKobo: number;
+    orderCount: number;
+    percentageShare: number;
+  }
+
+  interface SalesMetrics {
+    grossRevenueKobo: number;
+    deliveredRevenueKobo: number;
+    inTransitRevenueKobo: number;
+    awaitingFulfillmentRevenueKobo: number;
+    abandonedRevenueKobo: number;
+    returnedRevenueKobo: number;
+    totalOrdersCount: number;
+    paidOrdersCount: number;
+    averageOrderValueKobo: number;
+    totalUnitsSold: number;
+  }
+
+  const [salesMetrics, setSalesMetrics] = useState<SalesMetrics>({
+    grossRevenueKobo: 0,
+    deliveredRevenueKobo: 0,
+    inTransitRevenueKobo: 0,
+    awaitingFulfillmentRevenueKobo: 0,
+    abandonedRevenueKobo: 0,
+    returnedRevenueKobo: 0,
+    totalOrdersCount: 0,
+    paidOrdersCount: 0,
+    averageOrderValueKobo: 0,
+    totalUnitsSold: 0,
+  });
+  const [salesSectorBreakdown, setSalesSectorBreakdown] = useState<SectorBreakdownItem[]>([]);
+  const [salesSectors, setSalesSectors] = useState<Array<{ id: string; name: string; slug: string }>>([]);
+  const [salesOrders, setSalesOrders] = useState<any[]>([]);
+  const [salesPeriod, setSalesPeriod] = useState<"all" | "today" | "7d" | "30d" | "this_month" | "custom">("all");
+  const [salesDateFrom, setSalesDateFrom] = useState<string>("");
+  const [salesDateTo, setSalesDateTo] = useState<string>("");
+  const [salesSectorFilter, setSalesSectorFilter] = useState<string>("all");
+  const [salesStatusFilter, setSalesStatusFilter] = useState<string>("all");
+  const [salesSearchQuery, setSalesSearchQuery] = useState<string>("");
+  const [salesLoading, setSalesLoading] = useState<boolean>(false);
+
+  const fetchSalesData = async () => {
+    setSalesLoading(true);
+    try {
+      const params = new URLSearchParams();
+      const now = new Date();
+
+      if (salesPeriod === "today") {
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+        params.append("from", todayStart);
+      } else if (salesPeriod === "7d") {
+        const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        params.append("from", d7);
+      } else if (salesPeriod === "30d") {
+        const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        params.append("from", d30);
+      } else if (salesPeriod === "this_month") {
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        params.append("from", monthStart);
+      } else if (salesPeriod === "custom") {
+        if (salesDateFrom) params.append("from", salesDateFrom);
+        if (salesDateTo) params.append("to", salesDateTo);
+      }
+
+      if (salesSectorFilter && salesSectorFilter !== "all") {
+        params.append("sector", salesSectorFilter);
+      }
+      if (salesStatusFilter && salesStatusFilter !== "all") {
+        params.append("status", salesStatusFilter);
+      }
+
+      const res = await fetch(`/api/admin/sales?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.metrics) setSalesMetrics(data.metrics);
+        if (data.sectorBreakdown) setSalesSectorBreakdown(data.sectorBreakdown);
+        if (data.sectors) setSalesSectors(data.sectors);
+        if (data.orders) setSalesOrders(data.orders);
+      }
+    } catch (e) {
+      console.error("Failed to fetch sales data:", e);
+    } finally {
+      setSalesLoading(false);
+    }
+  };
+
+  const downloadSalesCsv = (type: "ledger" | "sector") => {
+    const params = new URLSearchParams();
+    const now = new Date();
+
+    if (salesPeriod === "today") {
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      params.append("from", todayStart);
+    } else if (salesPeriod === "7d") {
+      const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      params.append("from", d7);
+    } else if (salesPeriod === "30d") {
+      const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      params.append("from", d30);
+    } else if (salesPeriod === "this_month") {
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      params.append("from", monthStart);
+    } else if (salesPeriod === "custom") {
+      if (salesDateFrom) params.append("from", salesDateFrom);
+      if (salesDateTo) params.append("to", salesDateTo);
+    }
+
+    if (salesSectorFilter && salesSectorFilter !== "all") {
+      params.append("sector", salesSectorFilter);
+    }
+    if (salesStatusFilter && salesStatusFilter !== "all") {
+      params.append("status", salesStatusFilter);
+    }
+
+    params.append("format", type === "sector" ? "sector_csv" : "csv");
+    window.open(`/api/admin/sales?${params.toString()}`, "_blank");
+  };
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -341,6 +471,9 @@ export default function AdminDashboardPage() {
     fetchAbandoned();
     fetchCoupons();
     fetchAdminReviews();
+    if (activeTab === "sales") {
+      fetchSalesData();
+    }
     if (activeTab === "notifications") {
       fetchLogs();
     }
@@ -356,7 +489,31 @@ export default function AdminDashboardPage() {
     if (activeTab === "reviews") {
       fetchAdminReviews();
     }
-  }, [statusFilter, ticketFilter, abandonedFilter, reviewFilter, activeTab]);
+  }, [
+    statusFilter,
+    ticketFilter,
+    abandonedFilter,
+    reviewFilter,
+    activeTab,
+    salesPeriod,
+    salesDateFrom,
+    salesDateTo,
+    salesSectorFilter,
+    salesStatusFilter,
+  ]);
+
+  const filteredSalesOrders = salesOrders.filter((o) => {
+    if (!salesSearchQuery.trim()) return true;
+    const q = salesSearchQuery.toLowerCase().trim();
+    const orderNumMatch = String(o.order_number).includes(q);
+    const nameMatch = o.customer?.name?.toLowerCase().includes(q) || false;
+    const emailMatch = o.customer?.email?.toLowerCase().includes(q) || false;
+    const phoneMatch = o.customer?.phone?.toLowerCase().includes(q) || false;
+    const payRefMatch = o.payment?.paystack_reference?.toLowerCase().includes(q) || false;
+    const invoiceMatch = o.invoice?.invoice_number ? String(o.invoice.invoice_number).includes(q) : false;
+    const receiptMatch = o.receipt?.receipt_number ? String(o.receipt.receipt_number).includes(q) : false;
+    return orderNumMatch || nameMatch || emailMatch || phoneMatch || payRefMatch || invoiceMatch || receiptMatch;
+  });
 
   const handleRunSweep = async () => {
     setRunningSweep(true);
@@ -531,13 +688,16 @@ export default function AdminDashboardPage() {
             onClick={() => {
               fetchOrders();
               fetchAbandoned();
+              if (activeTab === "sales") fetchSalesData();
               if (activeTab === "notifications") fetchLogs();
               if (activeTab === "tickets") fetchTickets();
               if (activeTab === "abandoned") fetchAbandoned();
+              if (activeTab === "promotions") fetchCoupons();
+              if (activeTab === "reviews") fetchAdminReviews();
             }}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
+            <RefreshCw className={`w-3.5 h-3.5 ${loading || salesLoading ? "animate-spin" : ""}`} /> Refresh
           </button>
           <button
             onClick={exportCsv}
@@ -579,6 +739,16 @@ export default function AdminDashboardPage() {
           }`}
         >
           Orders Fulfillment ({orders.length})
+        </button>
+        <button
+          onClick={() => setActiveTab("sales")}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "sales"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-400 hover:text-slate-700"
+          }`}
+        >
+          <TrendingUp className="w-4 h-4 text-emerald-600" /> Sales & Accounting
         </button>
         <button
           onClick={() => setActiveTab("notifications")}
@@ -1828,6 +1998,436 @@ export default function AdminDashboardPage() {
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sales & Accounting Ledger Tab */}
+      {activeTab === "sales" && (
+        <div className="space-y-6">
+          {/* Sales Tab Header & Actions */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200">
+            <div>
+              <div className="flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-base font-bold text-slate-900">
+                  Sales Ledger & Financial Bookkeeping
+                </h3>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Real-time transaction reconciliation, sector revenue attribution, and sequential invoice/receipt audits.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => downloadSalesCsv("sector")}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
+              >
+                <PieChart className="w-3.5 h-3.5 text-indigo-600" /> Sector Accounting CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => downloadSalesCsv("ledger")}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors shadow-xs"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" /> Export Master Sales CSV
+              </button>
+            </div>
+          </div>
+
+          {/* Time Period Filter Bar */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-slate-500" /> Accounting Period
+              </span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[
+                  { id: "all", label: "All Time" },
+                  { id: "today", label: "Today" },
+                  { id: "7d", label: "Last 7 Days" },
+                  { id: "30d", label: "Last 30 Days" },
+                  { id: "this_month", label: "This Month" },
+                  { id: "custom", label: "Custom Range" },
+                ].map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setSalesPeriod(p.id as any)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                      salesPeriod === p.id
+                        ? "bg-slate-900 text-white shadow-xs"
+                        : "bg-slate-100 hover:bg-slate-200 text-slate-600"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom Range Inputs */}
+            {salesPeriod === "custom" && (
+              <div className="pt-3 border-t border-slate-100 flex items-center gap-3 flex-wrap text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500 font-medium">From:</span>
+                  <input
+                    type="date"
+                    value={salesDateFrom}
+                    onChange={(e) => setSalesDateFrom(e.target.value)}
+                    className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500 font-medium">To:</span>
+                  <input
+                    type="date"
+                    value={salesDateTo}
+                    onChange={(e) => setSalesDateTo(e.target.value)}
+                    className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={fetchSalesData}
+                  className="px-3 py-1.5 bg-slate-900 text-white rounded-lg font-semibold text-xs hover:bg-slate-800 transition-colors"
+                >
+                  Apply Date Range
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Financial KPI Dashboard Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Gross Confirmed Sales</span>
+              <p className="text-xl font-black text-slate-900 mt-1">
+                {formatKoboToNaira(salesMetrics.grossRevenueKobo)}
+              </p>
+              <span className="text-[10px] text-emerald-600 font-medium">
+                {salesMetrics.paidOrdersCount} confirmed orders
+              </span>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Average Order Value (AOV)</span>
+              <p className="text-xl font-black text-indigo-600 mt-1">
+                {formatKoboToNaira(salesMetrics.averageOrderValueKobo)}
+              </p>
+              <span className="text-[10px] text-slate-400 font-medium">
+                Across confirmed transactions
+              </span>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Items Sold</span>
+              <p className="text-xl font-black text-emerald-600 mt-1">
+                {salesMetrics.totalUnitsSold} <span className="text-xs font-normal text-slate-500">units</span>
+              </p>
+              <span className="text-[10px] text-slate-400 font-medium">
+                Inventory moved
+              </span>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Realized (Delivered)</span>
+              <p className="text-xl font-black text-teal-600 mt-1">
+                {formatKoboToNaira(salesMetrics.deliveredRevenueKobo)}
+              </p>
+              <span className="text-[10px] text-slate-400 font-medium">
+                Fully fulfilled & received
+              </span>
+            </div>
+          </div>
+
+          {/* Secondary Revenue Distribution */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-medium text-slate-500">In Transit (Dispatched)</span>
+                <p className="text-base font-bold text-blue-600 mt-0.5">
+                  {formatKoboToNaira(salesMetrics.inTransitRevenueKobo)}
+                </p>
+              </div>
+              <Truck className="w-5 h-5 text-blue-400" />
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-medium text-slate-500">Awaiting Shipment</span>
+                <p className="text-base font-bold text-amber-600 mt-0.5">
+                  {formatKoboToNaira(salesMetrics.awaitingFulfillmentRevenueKobo)}
+                </p>
+              </div>
+              <Package className="w-5 h-5 text-amber-400" />
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-medium text-slate-500">Lost / Abandoned Value</span>
+                <p className="text-base font-bold text-rose-600 mt-0.5">
+                  {formatKoboToNaira(salesMetrics.abandonedRevenueKobo)}
+                </p>
+              </div>
+              <RotateCcw className="w-5 h-5 text-rose-400" />
+            </div>
+          </div>
+
+          {/* Sector Revenue Matrix */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-slate-600" />
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  Revenue Contribution by Sector
+                </h4>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                4 Core Store Sectors
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {salesSectorBreakdown.map((sec) => (
+                <div
+                  key={sec.id}
+                  className={`p-4 rounded-xl border transition-all ${
+                    salesSectorFilter === sec.slug
+                      ? "border-slate-900 bg-slate-50/80 shadow-xs"
+                      : "border-slate-200 bg-white hover:border-slate-300"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-900 truncate max-w-[150px]">
+                      {sec.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSalesSectorFilter(salesSectorFilter === sec.slug ? "all" : sec.slug)
+                      }
+                      className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800"
+                    >
+                      {salesSectorFilter === sec.slug ? "Clear" : "Filter"}
+                    </button>
+                  </div>
+                  <p className="text-lg font-black text-slate-900 mt-2">
+                    {formatKoboToNaira(sec.revenueKobo)}
+                  </p>
+                  <div className="mt-2 space-y-1">
+                    <div className="flex justify-between text-[10px] text-slate-500">
+                      <span>{sec.unitsSold} units sold</span>
+                      <span className="font-bold text-slate-700">{sec.percentageShare}%</span>
+                    </div>
+                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="bg-indigo-600 h-1.5 rounded-full transition-all duration-300"
+                        style={{ width: `${Math.min(sec.percentageShare, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Ledger Table Section */}
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+            {/* Table Filter Bar */}
+            <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search Order #, Customer, Paystack ref, Invoice #..."
+                  value={salesSearchQuery}
+                  onChange={(e) => setSalesSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:border-slate-900"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <select
+                  value={salesSectorFilter}
+                  onChange={(e) => setSalesSectorFilter(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 focus:outline-hidden"
+                >
+                  <option value="all">All Sectors</option>
+                  {salesSectors.map((s) => (
+                    <option key={s.id} value={s.slug}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={salesStatusFilter}
+                  onChange={(e) => setSalesStatusFilter(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 focus:outline-hidden"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="paid">Paid</option>
+                  <option value="shipped">Shipped</option>
+                  <option value="delivered">Delivered</option>
+                  <option value="abandoned">Abandoned</option>
+                  <option value="returned">Returned</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Table Content */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase text-slate-500 tracking-wider">
+                  <tr>
+                    <th className="p-3.5">Order & Date</th>
+                    <th className="p-3.5">Customer</th>
+                    <th className="p-3.5">Items & Sectors</th>
+                    <th className="p-3.5">Status</th>
+                    <th className="p-3.5">Gross (NGN)</th>
+                    <th className="p-3.5 text-right">Official Documents</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {salesLoading ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-slate-400">
+                        <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-slate-500" />
+                        Loading sales ledger transactions...
+                      </td>
+                    </tr>
+                  ) : filteredSalesOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-slate-400">
+                        No transactions found matching current accounting filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredSalesOrders.map((o) => (
+                      <tr key={o.id} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="p-3.5">
+                          <div className="font-bold text-slate-900">#{o.order_number}</div>
+                          <div className="text-[11px] text-slate-400">
+                            {new Date(o.created_at).toLocaleDateString("en-NG", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })}
+                          </div>
+                          {o.payment?.paystack_reference && (
+                            <div className="text-[10px] font-mono text-slate-400 truncate max-w-[140px]">
+                              {o.payment.paystack_reference}
+                            </div>
+                          )}
+                        </td>
+
+                        <td className="p-3.5">
+                          <div className="font-semibold text-slate-900">{o.customer?.name}</div>
+                          <div className="text-[11px] text-slate-400">{o.customer?.email}</div>
+                          <div className="text-[11px] text-slate-400">{o.customer?.phone}</div>
+                        </td>
+
+                        <td className="p-3.5 max-w-xs">
+                          <div className="space-y-1">
+                            {o.items?.map((item: any, idx: number) => (
+                              <div key={idx} className="flex items-center gap-1.5 text-[11px] text-slate-700 truncate">
+                                <span className="font-bold text-slate-900">{item.qty}x</span>
+                                <span className="truncate">{item.product_name_snapshot}</span>
+                                {item.product?.sector?.name && (
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded-sm bg-slate-100 text-slate-600 font-medium">
+                                    {item.product.sector.name}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+
+                        <td className="p-3.5 whitespace-nowrap">
+                          {o.status === "paid" && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                              <CheckCircle className="w-3 h-3" /> Paid
+                            </span>
+                          )}
+                          {o.status === "shipped" && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              <Truck className="w-3 h-3" /> Shipped
+                            </span>
+                          )}
+                          {o.status === "delivered" && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <CheckCircle className="w-3 h-3" /> Delivered
+                            </span>
+                          )}
+                          {o.status === "abandoned" && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                              <AlertCircle className="w-3 h-3" /> Abandoned
+                            </span>
+                          )}
+                          {o.status === "returned" && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                              <RotateCcw className="w-3 h-3" /> Returned
+                            </span>
+                          )}
+                          {!["paid", "shipped", "delivered", "abandoned", "returned"].includes(o.status) && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                              {o.status}
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="p-3.5 whitespace-nowrap font-bold text-slate-900">
+                          {formatKoboToNaira(o.total_kobo)}
+                        </td>
+
+                        <td className="p-3.5 text-right whitespace-nowrap">
+                          {["paid", "shipped", "delivered"].includes(o.status) ? (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <a
+                                href={`/api/orders/${o.id}/receipt?type=invoice`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                                title="Download Official Invoice PDF"
+                              >
+                                <FileText className="w-3 h-3 text-slate-500" />
+                                {o.invoice?.invoice_number ? `INV-${String(o.invoice.invoice_number).padStart(5, "0")}` : "Invoice"}
+                              </a>
+
+                              <a
+                                href={`/api/orders/${o.id}/receipt?type=receipt`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-colors"
+                                title="Download Official Receipt PDF"
+                              >
+                                <Download className="w-3 h-3 text-emerald-600" />
+                                {o.receipt?.receipt_number ? `REC-${String(o.receipt.receipt_number).padStart(5, "0")}` : "Receipt"}
+                              </a>
+
+                              <a
+                                href={`/api/orders/${o.id}/receipt?type=packing_slip`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-colors"
+                                title="Download Packing Slip PDF"
+                              >
+                                <Truck className="w-3 h-3 text-blue-600" />
+                              </a>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-slate-400 italic">No documents</span>
+                          )}
                         </td>
                       </tr>
                     ))
