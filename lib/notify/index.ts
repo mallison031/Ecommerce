@@ -33,6 +33,9 @@ export async function notifyOrderStatusChange({ orderId, status }: NotifyOrderOp
     orderNumber: order.order_number,
     status,
     totalNaira: formatKoboToNaira(order.total_kobo),
+    courierName: order.courier_name,
+    trackingNumber: order.tracking_number,
+    dispatchNotes: order.dispatch_notes,
   });
 
   // 2. WHATSAPP CUSTOMER NOTIFICATION (if opted-in & valid E.164 phone)
@@ -77,12 +80,18 @@ async function sendCustomerEmail({
   orderNumber,
   status,
   totalNaira,
+  courierName,
+  trackingNumber,
+  dispatchNotes,
 }: {
   toEmail: string;
   customerName: string;
   orderNumber: number;
   status: OrderNotificationStatus;
   totalNaira: string;
+  courierName?: string | null;
+  trackingNumber?: string | null;
+  dispatchNotes?: string | null;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.RESEND_FROM_EMAIL || "orders@resend.dev";
@@ -113,6 +122,18 @@ async function sendCustomerEmail({
     return;
   }
 
+  const dispatchHtml =
+    status === "shipped" && (courierName || trackingNumber)
+      ? `
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin: 16px 0;">
+          <h4 style="margin: 0 0 8px 0; color: #1e293b; font-size: 14px;">Courier & Dispatch Details</h4>
+          ${courierName ? `<p style="margin: 4px 0; font-size: 13px;"><strong>Courier:</strong> ${courierName}</p>` : ""}
+          ${trackingNumber ? `<p style="margin: 4px 0; font-size: 13px;"><strong>Waybill / Tracking No:</strong> ${trackingNumber}</p>` : ""}
+          ${dispatchNotes ? `<p style="margin: 4px 0; font-size: 13px; color: #64748b;"><strong>Notes:</strong> ${dispatchNotes}</p>` : ""}
+        </div>
+      `
+      : "";
+
   try {
     const resend = new Resend(apiKey);
     await resend.emails.send({
@@ -125,6 +146,12 @@ async function sendCustomerEmail({
           <p>Hi ${customerName},</p>
           <p>This is an update regarding order <strong>#${orderNumber}</strong> totaling <strong>${totalNaira}</strong>.</p>
           <p>Status: <span style="display:inline-block; padding: 4px 10px; background: #e0f2fe; color: #0369a1; border-radius: 4px; font-weight: bold; text-transform: uppercase;">${status}</span></p>
+          ${dispatchHtml}
+          <div style="margin: 20px 0;">
+            <a href="https://aurastore.ng/track-order?order=${orderNumber}" style="display: inline-block; padding: 10px 18px; background: #db2777; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">
+              Track Order Live
+            </a>
+          </div>
           <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;" />
           <p style="font-size: 13px; color: #6b7280;">If you have any questions, you can contact us via our WhatsApp customer care link.</p>
         </div>

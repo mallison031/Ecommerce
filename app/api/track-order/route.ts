@@ -87,6 +87,11 @@ export async function GET(req: NextRequest) {
       customer_phone_masked: maskString(o.customer.phone),
       whatsapp_opt_in: o.customer.whatsapp_opt_in,
       delivery_address: o.delivery_address,
+      courier_name: o.courier_name || null,
+      tracking_number: o.tracking_number || null,
+      dispatch_notes: o.dispatch_notes || null,
+      shipped_at: o.shipped_at || null,
+      delivered_at: o.delivered_at || null,
       items: o.items.map((i: any) => ({
         id: i.id,
         name: i.product_name_snapshot,

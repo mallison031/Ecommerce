@@ -30,6 +30,11 @@ interface TrackedOrder {
   customer_phone_masked: string;
   whatsapp_opt_in: boolean;
   delivery_address: string;
+  courier_name: string | null;
+  tracking_number: string | null;
+  dispatch_notes: string | null;
+  shipped_at: string | null;
+  delivered_at: string | null;
   items: Array<{
     id: string;
     name: string;
@@ -266,6 +271,40 @@ function TrackOrderContent() {
                     <p className="mt-1">
                       This order is currently flagged as {order.status}. If you have any inquiries or require courier assistance, please contact customer care via WhatsApp.
                     </p>
+                  </div>
+                )}
+
+                {/* Dispatch / Courier Details (if dispatched) */}
+                {(order.courier_name || order.tracking_number) && (
+                  <div className="p-3.5 bg-blue-50/80 rounded-xl border border-blue-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div className="flex items-start gap-2.5">
+                      <Truck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-semibold text-blue-950">
+                          Dispatched via {order.courier_name || "Courier Partner"}
+                          {order.shipped_at && (
+                            <span className="font-normal text-blue-700 text-[11px] ml-1.5">
+                              • {new Date(order.shipped_at).toLocaleDateString("en-NG", {
+                                month: "short",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          )}
+                        </div>
+                        {order.tracking_number && (
+                          <div className="font-mono text-blue-800 mt-0.5">
+                            Waybill / Tracking: <span className="font-bold">{order.tracking_number}</span>
+                          </div>
+                        )}
+                        {order.dispatch_notes && (
+                          <div className="text-blue-700/90 text-[11px] mt-0.5 italic">
+                            Delivery note: {order.dispatch_notes}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
 
