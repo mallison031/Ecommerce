@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Link from "next/link";
 import { formatKoboToNaira } from "@/lib/utils";
 import { useCart } from "@/context/cart-context";
 import { ShoppingBag, Check } from "lucide-react";
@@ -14,13 +14,25 @@ export interface ProductData {
   price_kobo: number;
   stock_qty: number;
   image_urls: string[];
+  sector_slug?: string;
 }
 
-export function ProductCard({ product }: { product: ProductData }) {
+export function ProductCard({
+  product,
+  sectorSlug,
+}: {
+  product: ProductData;
+  sectorSlug?: string;
+}) {
   const { addItem } = useCart();
   const [added, setAdded] = useState(false);
 
-  const handleAddToCart = () => {
+  const effectiveSectorSlug = sectorSlug || product.sector_slug || "products";
+  const productHref = `/${effectiveSectorSlug}/${product.slug}`;
+
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     addItem({
       productId: product.id,
       name: product.name,
@@ -36,7 +48,7 @@ export function ProductCard({ product }: { product: ProductData }) {
 
   return (
     <div className="group bg-white rounded-xl border border-slate-200/80 overflow-hidden hover:shadow-lg transition-all duration-300 flex flex-col">
-      <div className="relative aspect-square overflow-hidden bg-slate-100">
+      <Link href={productHref} className="relative aspect-square overflow-hidden bg-slate-100 block">
         <img
           src={product.image_urls[0] || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&q=80"}
           alt={product.name}
@@ -49,13 +61,15 @@ export function ProductCard({ product }: { product: ProductData }) {
             </span>
           </div>
         )}
-      </div>
+      </Link>
 
       <div className="p-4 flex-1 flex flex-col justify-between">
         <div>
-          <h3 className="font-semibold text-slate-900 text-sm line-clamp-1 group-hover:text-pink-600 transition-colors">
-            {product.name}
-          </h3>
+          <Link href={productHref} className="block">
+            <h3 className="font-semibold text-slate-900 text-sm line-clamp-1 group-hover:text-pink-600 transition-colors">
+              {product.name}
+            </h3>
+          </Link>
           <p className="mt-1 text-xs text-slate-500 line-clamp-2">
             {product.description}
           </p>

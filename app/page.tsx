@@ -222,17 +222,33 @@ export default async function HomePage() {
           <section key={sector.id} id={sector.slug} className="scroll-mt-24">
             <div className="flex items-end justify-between border-b border-slate-200 pb-4 mb-6">
               <div>
-                <h2 className="text-2xl font-bold text-slate-900 tracking-tight">{sector.name}</h2>
+                <Link href={`/${sector.slug}`} className="group">
+                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight group-hover:text-pink-600 transition-colors">
+                    {sector.name}
+                  </h2>
+                </Link>
                 <p className="text-xs text-slate-500 mt-1">Hand-picked collection with guaranteed quality</p>
               </div>
-              <span className="text-xs font-semibold text-pink-600">
-                {sector.products.length} {sector.products.length === 1 ? "item" : "items"}
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-slate-400">
+                  {sector.products.length} {sector.products.length === 1 ? "item" : "items"}
+                </span>
+                <Link
+                  href={`/${sector.slug}`}
+                  className="text-xs font-bold text-pink-600 hover:text-pink-700 hidden sm:inline"
+                >
+                  View Sector →
+                </Link>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
               {sector.products.map((product) => (
-                <ProductCard key={product.id} product={product as ProductData} />
+                <ProductCard
+                  key={product.id}
+                  product={product as ProductData}
+                  sectorSlug={sector.slug}
+                />
               ))}
             </div>
           </section>
