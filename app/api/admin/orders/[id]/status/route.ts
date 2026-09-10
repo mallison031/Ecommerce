@@ -10,7 +10,7 @@ export async function POST(
   try {
     const { id } = params;
     const body = await req.json();
-    const { status } = body;
+    const { status, courier_name, tracking_number, dispatch_notes } = body;
 
     const allowedStatuses: OrderStatus[] = [
       "paid",
@@ -33,10 +33,25 @@ export async function POST(
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
-    // Update status
+    // Update status and optional dispatch fields
+    const updateData: {
+      status: OrderStatus;
+      courier_name?: string | null;
+      tracking_number?: string | null;
+      dispatch_notes?: string | null;
+      shipped_at?: Date;
+      delivered_at?: Date;
+    } = { status };
+
+    if (courier_name !== undefined) updateData.courier_name = courier_name;
+    if (tracking_number !== undefined) updateData.tracking_number = tracking_number;
+    if (dispatch_notes !== undefined) updateData.dispatch_notes = dispatch_notes;
+    if (status === "shipped") updateData.shipped_at = new Date();
+    if (status === "delivered") updateData.delivered_at = new Date();
+
     const updated = await prisma.order.update({
       where: { id },
-      data: { status },
+      data: updateData,
     });
 
     // Notify customer and admin via shared notify function (Rule 6)

@@ -2,7 +2,7 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { formatKoboToNaira } from "@/lib/utils";
 
 export interface InvoiceReceiptData {
-  type: "INVOICE" | "RECEIPT";
+  type: "INVOICE" | "RECEIPT" | "PACKING_SLIP";
   documentNumber: number;
   orderNumber: number;
   date: Date;
@@ -10,6 +10,9 @@ export interface InvoiceReceiptData {
   customerEmail: string;
   customerPhone: string;
   deliveryAddress: string;
+  courierName?: string | null;
+  trackingNumber?: string | null;
+  dispatchNotes?: string | null;
   items: Array<{
     name: string;
     quantity: number;
@@ -35,16 +38,23 @@ export async function generateDocumentPdf(data: InvoiceReceiptData): Promise<Uin
   let y = height - 50;
 
   // Title / Header
-  const title = data.type === "INVOICE" ? "INVOICE" : "OFFICIAL RECEIPT";
+  const title =
+    data.type === "INVOICE"
+      ? "INVOICE"
+      : data.type === "PACKING_SLIP"
+      ? "PACKING SLIP / DISPATCH"
+      : "OFFICIAL RECEIPT";
+
   page.drawText(title, {
     x: 50,
     y,
-    size: 24,
+    size: 20,
     font: fontBold,
     color: primaryColor,
   });
 
-  const docLabel = `${data.type === "INVOICE" ? "INV" : "REC"}-${String(data.documentNumber).padStart(5, "0")}`;
+  const prefix = data.type === "INVOICE" ? "INV" : data.type === "PACKING_SLIP" ? "PAK" : "REC";
+  const docLabel = `${prefix}-${String(data.documentNumber).padStart(5, "0")}`;
   page.drawText(docLabel, {
     x: width - 200,
     y,
@@ -122,6 +132,29 @@ export async function generateDocumentPdf(data: InvoiceReceiptData): Promise<Uin
     font: fontRegular,
     color: mutedColor,
   });
+
+  if (data.courierName || data.trackingNumber) {
+    y -= 14;
+    const dispatchText = `Dispatch: ${data.courierName || "Courier Partner"} ${data.trackingNumber ? `(Waybill: ${data.trackingNumber})` : ""}`;
+    page.drawText(dispatchText, {
+      x: 50,
+      y,
+      size: 10,
+      font: fontBold,
+      color: primaryColor,
+    });
+  }
+
+  if (data.dispatchNotes) {
+    y -= 14;
+    page.drawText(`Dispatch Notes: ${data.dispatchNotes}`, {
+      x: 50,
+      y,
+      size: 9,
+      font: fontRegular,
+      color: mutedColor,
+    });
+  }
 
   y -= 35;
   // Table Header

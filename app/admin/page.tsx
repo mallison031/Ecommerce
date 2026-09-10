@@ -11,6 +11,10 @@ import {
   Download,
   Bell,
   RefreshCw,
+  FileText,
+  Search,
+  X,
+  Loader2,
 } from "lucide-react";
 
 interface Order {
@@ -19,6 +23,11 @@ interface Order {
   status: string;
   total_kobo: number;
   delivery_address: string;
+  courier_name?: string | null;
+  tracking_number?: string | null;
+  dispatch_notes?: string | null;
+  shipped_at?: string | null;
+  delivered_at?: string | null;
   created_at: string;
   customer: {
     name: string;
@@ -54,8 +63,16 @@ export default function AdminDashboardPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  // Dispatch Modal State
+  const [dispatchOrder, setDispatchOrder] = useState<Order | null>(null);
+  const [dispatchCourier, setDispatchCourier] = useState("GIG Logistics");
+  const [dispatchTracking, setDispatchTracking] = useState("");
+  const [dispatchNotes, setDispatchNotes] = useState("");
+  const [submittingDispatch, setSubmittingDispatch] = useState(false);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -105,6 +122,51 @@ export default function AdminDashboardPage() {
       setUpdatingId(null);
     }
   };
+
+  const openDispatchModal = (order: Order) => {
+    setDispatchOrder(order);
+    setDispatchCourier(order.courier_name || "GIG Logistics");
+    setDispatchTracking(order.tracking_number || "");
+    setDispatchNotes(order.dispatch_notes || "");
+  };
+
+  const handleConfirmDispatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dispatchOrder) return;
+    setSubmittingDispatch(true);
+    try {
+      const res = await fetch(`/api/admin/orders/${dispatchOrder.id}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "shipped",
+          courier_name: dispatchCourier.trim() || null,
+          tracking_number: dispatchTracking.trim() || null,
+          dispatch_notes: dispatchNotes.trim() || null,
+        }),
+      });
+      if (res.ok) {
+        setDispatchOrder(null);
+        await fetchOrders();
+      }
+    } catch (e) {
+      console.error("Failed submitting dispatch:", e);
+    } finally {
+      setSubmittingDispatch(false);
+    }
+  };
+
+  const filteredOrders = orders.filter((o) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    const orderNumMatch = String(o.order_number).includes(q);
+    const nameMatch = o.customer.name.toLowerCase().includes(q);
+    const emailMatch = o.customer.email.toLowerCase().includes(q);
+    const phoneMatch = o.customer.phone.toLowerCase().includes(q);
+    const trackingMatch = o.tracking_number ? o.tracking_number.toLowerCase().includes(q) : false;
+    const courierMatch = o.courier_name ? o.courier_name.toLowerCase().includes(q) : false;
+    return orderNumMatch || nameMatch || emailMatch || phoneMatch || trackingMatch || courierMatch;
+  });
 
   const exportCsv = () => {
     const headers = ["Order Number,Date,Customer,Email,Phone,WhatsApp Opt-in,Status,Total (NGN)"];
@@ -218,21 +280,42 @@ export default function AdminDashboardPage() {
       {/* Tab: Orders */}
       {activeTab === "orders" && (
         <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-500">Filter status:</span>
-            {["", "pending_payment", "paid", "shipped", "delivered", "returned", "abandoned"].map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1 rounded-md text-xs font-medium capitalize transition-all ${
-                  statusFilter === s
-                    ? "bg-slate-900 text-white"
-                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                {s || "All"}
-              </button>
-            ))}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs font-semibold text-slate-500 mr-1">Filter:</span>
+              {["", "pending_payment", "paid", "shipped", "delivered", "returned", "abandoned"].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={`px-3 py-1 rounded-md text-xs font-medium capitalize transition-all ${
+                    statusFilter === s
+                      ? "bg-slate-900 text-white"
+                      : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {s || "All"}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative w-full sm:w-64">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search order #, customer, tracking..."
+                className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs placeholder:text-slate-400 focus:outline-hidden focus:border-slate-900 transition-colors"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
@@ -244,19 +327,19 @@ export default function AdminDashboardPage() {
                     <th className="p-3.5">Customer & Contact</th>
                     <th className="p-3.5">Items</th>
                     <th className="p-3.5">Total</th>
-                    <th className="p-3.5">Status</th>
+                    <th className="p-3.5">Status & Dispatch</th>
                     <th className="p-3.5 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
-                  {orders.length === 0 ? (
+                  {filteredOrders.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="p-8 text-center text-slate-400">
-                        No orders match the current filter.
+                        No orders match the current filter or search criteria.
                       </td>
                     </tr>
                   ) : (
-                    orders.map((order) => (
+                    filteredOrders.map((order) => (
                       <tr key={order.id} className="hover:bg-slate-50/50">
                         <td className="p-3.5 font-bold text-slate-900">
                           #{order.order_number}
@@ -280,6 +363,9 @@ export default function AdminDashboardPage() {
                               </span>
                             )}
                           </div>
+                          <div className="text-[11px] text-slate-400 mt-0.5 truncate max-w-[200px]" title={order.delivery_address}>
+                            📍 {order.delivery_address}
+                          </div>
                         </td>
                         <td className="p-3.5">
                           <div className="max-w-xs space-y-0.5">
@@ -294,33 +380,47 @@ export default function AdminDashboardPage() {
                           {formatKoboToNaira(order.total_kobo)}
                         </td>
                         <td className="p-3.5">
-                          <span
-                            className={`inline-block px-2.5 py-1 rounded-full font-semibold text-[11px] uppercase tracking-wider ${
-                              order.status === "paid"
-                                ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
-                                : order.status === "shipped"
-                                ? "bg-blue-50 text-blue-700 border border-blue-200"
-                                : order.status === "delivered"
-                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                : order.status === "abandoned"
-                                ? "bg-amber-50 text-amber-700 border border-amber-200"
-                                : order.status === "returned"
-                                ? "bg-rose-50 text-rose-700 border border-rose-200"
-                                : "bg-slate-100 text-slate-600"
-                            }`}
-                          >
-                            {order.status}
-                          </span>
+                          <div>
+                            <span
+                              className={`inline-block px-2.5 py-1 rounded-full font-semibold text-[11px] uppercase tracking-wider ${
+                                order.status === "paid"
+                                  ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                  : order.status === "shipped"
+                                  ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                  : order.status === "delivered"
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : order.status === "abandoned"
+                                  ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                  : order.status === "returned"
+                                  ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                  : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {order.status}
+                            </span>
+
+                            {order.courier_name && (
+                              <div className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-slate-700">
+                                <Truck className="w-3 h-3 text-blue-600 shrink-0" />
+                                <span>{order.courier_name}</span>
+                              </div>
+                            )}
+                            {order.tracking_number && (
+                              <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                #{order.tracking_number}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="p-3.5 text-right">
-                          <div className="inline-flex items-center gap-1.5">
+                          <div className="inline-flex items-center justify-end gap-1.5 flex-wrap">
                             {order.status === "paid" && (
                               <button
-                                onClick={() => handleUpdateStatus(order.id, "shipped")}
+                                onClick={() => openDispatchModal(order)}
                                 disabled={updatingId === order.id}
-                                className="px-2.5 py-1.5 rounded-md bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors"
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors shadow-xs"
                               >
-                                Mark Shipped
+                                <Truck className="w-3.5 h-3.5" /> Dispatch
                               </button>
                             )}
 
@@ -331,15 +431,39 @@ export default function AdminDashboardPage() {
                                   disabled={updatingId === order.id}
                                   className="px-2.5 py-1.5 rounded-md bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition-colors"
                                 >
-                                  Mark Delivered
+                                  Delivered
                                 </button>
                                 <button
                                   onClick={() => handleUpdateStatus(order.id, "returned")}
                                   disabled={updatingId === order.id}
-                                  className="px-2.5 py-1.5 rounded-md bg-rose-600 text-white font-semibold hover:bg-rose-700 transition-colors"
+                                  className="px-2 py-1.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 font-semibold"
                                 >
-                                  Mark Returned
+                                  Return
                                 </button>
+                              </>
+                            )}
+
+                            {/* Documents: Packing slip & Receipt */}
+                            {["paid", "shipped", "delivered"].includes(order.status) && (
+                              <>
+                                <a
+                                  href={`/api/orders/${order.id}/receipt?type=packing_slip`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                                  title="Download Packing Slip"
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                </a>
+                                <a
+                                  href={`/api/orders/${order.id}/receipt`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                                  title="Download Official Receipt"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </a>
                               </>
                             )}
                           </div>
@@ -412,6 +536,140 @@ export default function AdminDashboardPage() {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Dispatch & Fulfillment Modal */}
+      {dispatchOrder && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <Truck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Dispatch Order #{dispatchOrder.order_number}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Assign courier and trigger customer dispatch notifications
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDispatchOrder(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Recipient & Package Summary */}
+            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Recipient:</span>
+                <span className="font-semibold text-slate-900">{dispatchOrder.customer.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Phone:</span>
+                <span className="text-slate-800">{dispatchOrder.customer.phone}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Delivery Address:</span>
+                <span className="font-medium text-slate-800 max-w-[280px] text-right truncate">
+                  {dispatchOrder.delivery_address}
+                </span>
+              </div>
+              <div className="pt-2 border-t border-slate-200 flex justify-between font-bold text-slate-900">
+                <span>Items ({dispatchOrder.items.reduce((s, i) => s + i.qty, 0)}):</span>
+                <span>{formatKoboToNaira(dispatchOrder.total_kobo)}</span>
+              </div>
+            </div>
+
+            {/* Dispatch Form */}
+            <form onSubmit={handleConfirmDispatch} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                  Select Courier / Delivery Partner
+                </label>
+                <select
+                  value={dispatchCourier}
+                  onChange={(e) => setDispatchCourier(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-hidden focus:border-slate-900"
+                >
+                  <option value="GIG Logistics">GIG Logistics</option>
+                  <option value="DHL Express">DHL Express</option>
+                  <option value="Fez Delivery">Fez Delivery</option>
+                  <option value="Speedaf Express">Speedaf Express</option>
+                  <option value="Gokada / Max.ng">Gokada / Max.ng</option>
+                  <option value="Local Dispatch Bike">Local Dispatch Bike</option>
+                  <option value="In-Store Pickup">In-Store Pickup</option>
+                  <option value="Other">Other Courier</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                  Waybill / Tracking Number
+                </label>
+                <input
+                  type="text"
+                  value={dispatchTracking}
+                  onChange={(e) => setDispatchTracking(e.target.value)}
+                  placeholder="e.g. GIG-29183921 or Waybill # (optional)"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-900 focus:outline-hidden focus:border-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                  Dispatch Notes / Rider Contact
+                </label>
+                <input
+                  type="text"
+                  value={dispatchNotes}
+                  onChange={(e) => setDispatchNotes(e.target.value)}
+                  placeholder="e.g. Rider Tunde (08012345678), deliver before 4 PM"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:border-slate-900"
+                />
+              </div>
+
+              <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-200/60 text-[11px] text-blue-900 flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <div>
+                  Confirming dispatch will automatically update order status to{" "}
+                  <strong>shipped</strong> and trigger customer notification emails and WhatsApp alerts.
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDispatchOrder(null)}
+                  disabled={submittingDispatch}
+                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingDispatch}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-xs font-bold text-white transition-colors shadow-xs"
+                >
+                  {submittingDispatch ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Dispatching...
+                    </>
+                  ) : (
+                    <>
+                      <Truck className="w-3.5 h-3.5" /> Confirm & Ship Order
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -94,6 +94,11 @@ model Order {
   total_kobo       Int
   currency         String            @default("NGN")
   delivery_address String
+  courier_name     String?
+  tracking_number  String?
+  dispatch_notes   String?
+  shipped_at       DateTime?
+  delivered_at     DateTime?
   paid_at          DateTime?
   reminder_sent_at DateTime?
   abandoned_at     DateTime?
@@ -111,6 +116,7 @@ model Order {
   @@index([customer_id])
   @@index([status])
   @@index([order_number])
+  @@index([tracking_number])
   @@index([created_at])
 }
 

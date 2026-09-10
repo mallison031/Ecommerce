@@ -30,10 +30,13 @@ export async function GET(
       );
     }
 
+    const docTypeParam = req.nextUrl.searchParams.get("type");
+    const isPackingSlip = docTypeParam === "packing_slip";
+
     const receiptNumber = order.receipt?.receipt_number || order.order_number;
 
     const pdfBytes = await generateDocumentPdf({
-      type: "RECEIPT",
+      type: isPackingSlip ? "PACKING_SLIP" : "RECEIPT",
       documentNumber: receiptNumber,
       orderNumber: order.order_number,
       date: order.paid_at || order.created_at,
@@ -41,6 +44,9 @@ export async function GET(
       customerEmail: order.customer.email,
       customerPhone: order.customer.phone,
       deliveryAddress: order.delivery_address,
+      courierName: order.courier_name,
+      trackingNumber: order.tracking_number,
+      dispatchNotes: order.dispatch_notes,
       items: order.items.map((i) => ({
         name: i.product_name_snapshot,
         quantity: i.qty,
@@ -52,11 +58,14 @@ export async function GET(
     });
 
     const buffer = Buffer.from(pdfBytes);
+    const filename = isPackingSlip
+      ? `packing-slip-${order.order_number}.pdf`
+      : `receipt-${order.order_number}.pdf`;
 
     return new Response(buffer, {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="receipt-${order.order_number}.pdf"`,
+        "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
   } catch (err: unknown) {
