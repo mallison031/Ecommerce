@@ -36,6 +36,10 @@ import {
   Calendar,
   DollarSign,
   FileSpreadsheet,
+  PackageCheck,
+  Archive,
+  History,
+  Sliders,
 } from "lucide-react";
 
 interface Order {
@@ -120,7 +124,9 @@ interface AbandonedOrder {
 }
 
 export default function AdminDashboardPage() {
-  const [activeTab, setActiveTab] = useState<"orders" | "sales" | "notifications" | "tickets" | "abandoned" | "promotions" | "reviews">("orders");
+  const [activeTab, setActiveTab] = useState<
+    "orders" | "sales" | "inventory" | "notifications" | "tickets" | "abandoned" | "promotions" | "reviews"
+  >("orders");
   const [orders, setOrders] = useState<Order[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -311,6 +317,127 @@ export default function AdminDashboardPage() {
     window.open(`/api/admin/sales?${params.toString()}`, "_blank");
   };
 
+  // Inventory & Restock State
+  interface InventoryProduct {
+    id: string;
+    name: string;
+    slug: string;
+    description: string;
+    price_kobo: number;
+    stock_qty: number;
+    is_active: boolean;
+    image_urls: string[];
+    sector: { id: string; name: string; slug: string };
+    stockStatus: "in_stock" | "low_stock" | "out_of_stock";
+    waitlistCount: number;
+    adjustmentLogsCount: number;
+    created_at: string;
+    updated_at: string;
+  }
+
+  const [inventoryProducts, setInventoryProducts] = useState<InventoryProduct[]>([]);
+  const [inventoryMetrics, setInventoryMetrics] = useState({
+    totalProducts: 0,
+    totalStockUnits: 0,
+    totalValuationKobo: 0,
+    lowStockCount: 0,
+    outOfStockCount: 0,
+    inStockCount: 0,
+  });
+  const [inventorySectors, setInventorySectors] = useState<any[]>([]);
+  const [inventorySectorFilter, setInventorySectorFilter] = useState("all");
+  const [inventoryStatusFilter, setInventoryStatusFilter] = useState("all");
+  const [inventorySearch, setInventorySearch] = useState("");
+  const [loadingInventory, setLoadingInventory] = useState(false);
+
+  // Quick Restock Modal State
+  const [restockingProduct, setRestockingProduct] = useState<InventoryProduct | null>(null);
+  const [restockActionType, setRestockActionType] = useState<"increment" | "decrement" | "set">("increment");
+  const [restockAmount, setRestockAmount] = useState<number>(10);
+  const [restockReason, setRestockReason] = useState("Supplier Restock Shipment");
+  const [restockNotes, setRestockNotes] = useState("");
+  const [submittingRestock, setSubmittingRestock] = useState(false);
+  const [restockError, setRestockError] = useState<string | null>(null);
+
+  // History Modal State
+  const [selectedHistoryProduct, setSelectedHistoryProduct] = useState<InventoryProduct | null>(null);
+  const [productAdjustmentLogs, setProductAdjustmentLogs] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const fetchInventory = async () => {
+    setLoadingInventory(true);
+    try {
+      const params = new URLSearchParams();
+      if (inventorySectorFilter && inventorySectorFilter !== "all") {
+        params.append("sector", inventorySectorFilter);
+      }
+      if (inventoryStatusFilter && inventoryStatusFilter !== "all") {
+        params.append("status", inventoryStatusFilter);
+      }
+      if (inventorySearch.trim()) {
+        params.append("search", inventorySearch.trim());
+      }
+      const res = await fetch(`/api/admin/inventory?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.products) setInventoryProducts(data.products);
+        if (data.metrics) setInventoryMetrics(data.metrics);
+        if (data.sectors) setInventorySectors(data.sectors);
+      }
+    } catch (err) {
+      console.error("Failed fetching inventory:", err);
+    } finally {
+      setLoadingInventory(false);
+    }
+  };
+
+  const handleConfirmRestock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!restockingProduct) return;
+    setSubmittingRestock(true);
+    setRestockError(null);
+    try {
+      const res = await fetch(`/api/admin/inventory/${restockingProduct.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stock_qty: restockAmount,
+          adjustment_type: restockActionType,
+          reason: restockReason,
+          notes: restockNotes,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setRestockError(data.error || "Failed to update stock");
+      } else {
+        setRestockingProduct(null);
+        setRestockNotes("");
+        await fetchInventory();
+      }
+    } catch (err) {
+      setRestockError("Network error adjusting stock.");
+    } finally {
+      setSubmittingRestock(false);
+    }
+  };
+
+  const handleOpenHistory = async (prod: InventoryProduct) => {
+    setSelectedHistoryProduct(prod);
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(`/api/admin/inventory/${prod.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setProductAdjustmentLogs(data.product?.adjustment_logs || []);
+      }
+    } catch (err) {
+      console.error("Failed to load history logs:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
   const fetchOrders = async () => {
     setLoading(true);
     try {
@@ -474,6 +601,9 @@ export default function AdminDashboardPage() {
     if (activeTab === "sales") {
       fetchSalesData();
     }
+    if (activeTab === "inventory") {
+      fetchInventory();
+    }
     if (activeTab === "notifications") {
       fetchLogs();
     }
@@ -500,6 +630,9 @@ export default function AdminDashboardPage() {
     salesDateTo,
     salesSectorFilter,
     salesStatusFilter,
+    inventorySectorFilter,
+    inventoryStatusFilter,
+    inventorySearch,
   ]);
 
   const filteredSalesOrders = salesOrders.filter((o) => {
@@ -689,6 +822,7 @@ export default function AdminDashboardPage() {
               fetchOrders();
               fetchAbandoned();
               if (activeTab === "sales") fetchSalesData();
+              if (activeTab === "inventory") fetchInventory();
               if (activeTab === "notifications") fetchLogs();
               if (activeTab === "tickets") fetchTickets();
               if (activeTab === "abandoned") fetchAbandoned();
@@ -697,7 +831,7 @@ export default function AdminDashboardPage() {
             }}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading || salesLoading ? "animate-spin" : ""}`} /> Refresh
+            <RefreshCw className={`w-3.5 h-3.5 ${loading || salesLoading || loadingInventory ? "animate-spin" : ""}`} /> Refresh
           </button>
           <button
             onClick={exportCsv}
@@ -749,6 +883,21 @@ export default function AdminDashboardPage() {
           }`}
         >
           <TrendingUp className="w-4 h-4 text-emerald-600" /> Sales & Accounting
+        </button>
+        <button
+          onClick={() => setActiveTab("inventory")}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "inventory"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-400 hover:text-slate-700"
+          }`}
+        >
+          <PackageCheck className="w-4 h-4 text-amber-600" /> Inventory & Restock
+          {inventoryMetrics.lowStockCount + inventoryMetrics.outOfStockCount > 0 && (
+            <span className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+              {inventoryMetrics.lowStockCount + inventoryMetrics.outOfStockCount} alerts
+            </span>
+          )}
         </button>
         <button
           onClick={() => setActiveTab("notifications")}
@@ -2434,6 +2583,560 @@ export default function AdminDashboardPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* INVENTORY & RESTOCK TAB */}
+      {activeTab === "inventory" && (
+        <div className="space-y-6">
+          {/* Header & Metrics */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  <PackageCheck className="w-5 h-5 text-amber-600" /> Warehouse Inventory & Restock Portal
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Live stock quantity monitoring across fashion, beauty, electronics, and food sectors with automated low-stock warnings and restock logging.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={fetchInventory}
+                  disabled={loadingInventory}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingInventory ? "animate-spin text-amber-600" : ""}`} />
+                  Refresh Inventory
+                </button>
+              </div>
+            </div>
+
+            {/* Inventory KPI Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/70">
+                <div className="text-[11px] font-bold tracking-wider text-slate-400 uppercase flex items-center gap-1.5">
+                  <DollarSign className="w-3.5 h-3.5 text-emerald-600" /> Stock Valuation
+                </div>
+                <div className="text-xl font-black text-slate-900 mt-2">
+                  {formatKoboToNaira(inventoryMetrics.totalValuationKobo)}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  {inventoryMetrics.totalStockUnits.toLocaleString()} total units across {inventoryMetrics.totalProducts} items
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-amber-50/60 border border-amber-200/70">
+                <div className="text-[11px] font-bold tracking-wider text-amber-700 uppercase flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600" /> Low Stock Warning
+                </div>
+                <div className="text-xl font-black text-amber-700 mt-2">
+                  {inventoryMetrics.lowStockCount}
+                </div>
+                <div className="text-[11px] text-amber-800/80 mt-0.5">
+                  Items with 1 - 5 units remaining
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-rose-50/60 border border-rose-200/70">
+                <div className="text-[11px] font-bold tracking-wider text-rose-700 uppercase flex items-center gap-1.5">
+                  <Archive className="w-3.5 h-3.5 text-rose-600" /> Out of Stock
+                </div>
+                <div className="text-xl font-black text-rose-700 mt-2">
+                  {inventoryMetrics.outOfStockCount}
+                </div>
+                <div className="text-[11px] text-rose-800/80 mt-0.5">
+                  Sold out items needing urgent restock
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200/70">
+                <div className="text-[11px] font-bold tracking-wider text-emerald-700 uppercase flex items-center gap-1.5">
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> Healthy Inventory
+                </div>
+                <div className="text-xl font-black text-emerald-700 mt-2">
+                  {inventoryMetrics.inStockCount}
+                </div>
+                <div className="text-[11px] text-emerald-800/80 mt-0.5">
+                  Items with &gt; 5 units ready to ship
+                </div>
+              </div>
+            </div>
+
+            {/* Filters & Search */}
+            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2 border-t border-slate-100">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search product name, SKU, or sector..."
+                  value={inventorySearch}
+                  onChange={(e) => setInventorySearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:bg-white focus:border-slate-900 transition-colors"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Sector Filter */}
+                <select
+                  value={inventorySectorFilter}
+                  onChange={(e) => setInventorySectorFilter(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-hidden focus:border-slate-900"
+                >
+                  <option value="all">All Sectors</option>
+                  {inventorySectors.map((s) => (
+                    <option key={s.id} value={s.slug || s.name}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Stock Status Filter */}
+                <select
+                  value={inventoryStatusFilter}
+                  onChange={(e) => setInventoryStatusFilter(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:outline-hidden focus:border-slate-900"
+                >
+                  <option value="all">All Stock Statuses</option>
+                  <option value="in_stock">Healthy (&gt; 5 units)</option>
+                  <option value="low_stock">Low Stock (1 - 5 units)</option>
+                  <option value="out_of_stock">Out of Stock (0 units)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Inventory Table */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
+                    <th className="py-3 px-4">Product / Sector</th>
+                    <th className="py-3 px-4">SKU</th>
+                    <th className="py-3 px-4">Price</th>
+                    <th className="py-3 px-4">Stock Level</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Waitlist</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                  {loadingInventory ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-slate-400">
+                        <Loader2 className="w-6 h-6 animate-spin mx-auto text-amber-600 mb-2" />
+                        Loading inventory records...
+                      </td>
+                    </tr>
+                  ) : inventoryProducts.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-slate-400">
+                        <PackageCheck className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                        No inventory products match your filter criteria.
+                      </td>
+                    </tr>
+                  ) : (
+                    inventoryProducts.map((prod) => (
+                      <tr key={prod.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-3">
+                            {prod.image_urls && prod.image_urls[0] ? (
+                              <img
+                                src={prod.image_urls[0]}
+                                alt={prod.name}
+                                className="w-10 h-10 rounded-lg object-cover bg-slate-100 border border-slate-200 shrink-0"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400">
+                                <Package className="w-5 h-5" />
+                              </div>
+                            )}
+                            <div>
+                              <div className="font-bold text-slate-900 line-clamp-1 max-w-xs">
+                                {prod.name}
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 capitalize">
+                                  {prod.sector?.name || "General"}
+                                </span>
+                                <span className="text-[10px] text-slate-400">
+                                  {prod.adjustmentLogsCount || 0} audit logs
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-4 font-mono text-[11px] text-slate-600">
+                          {`SKU-${prod.id.slice(0, 7).toUpperCase()}`}
+                        </td>
+
+                        <td className="py-3 px-4 font-semibold text-slate-900">
+                          {formatKoboToNaira(prod.price_kobo)}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`font-black text-sm ${
+                                prod.stock_qty === 0
+                                  ? "text-rose-600"
+                                  : prod.stock_qty <= 5
+                                  ? "text-amber-600"
+                                  : "text-emerald-700"
+                              }`}
+                            >
+                              {prod.stock_qty}
+                            </span>
+                            <span className="text-[10px] text-slate-400">units</span>
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-4">
+                          {prod.stockStatus === "out_of_stock" ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                              <Archive className="w-3 h-3" /> Out of Stock
+                            </span>
+                          ) : prod.stockStatus === "low_stock" ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                              <AlertCircle className="w-3 h-3" /> Low Stock
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              <CheckCircle className="w-3 h-3" /> In Stock
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          {prod.waitlistCount > 0 ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                              <Bell className="w-3 h-3 text-purple-600" /> {prod.waitlistCount} waiting
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">0</span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4 text-right">
+                          <div className="inline-flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRestockingProduct(prod);
+                                setRestockAmount(10);
+                                setRestockActionType("increment");
+                                setRestockReason("Supplier Restock Shipment");
+                                setRestockNotes("");
+                                setRestockError(null);
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-colors"
+                              title="Restock or Adjust Units"
+                            >
+                              <Sliders className="w-3.5 h-3.5 text-amber-700" />
+                              Restock / Adjust
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenHistory(prod)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors"
+                              title="View Audit Movement Logs"
+                            >
+                              <History className="w-3.5 h-3.5 text-slate-500" />
+                              History
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QUICK RESTOCK / ADJUSTMENT MODAL */}
+      {restockingProduct && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 relative animate-in fade-in zoom-in-95 duration-150">
+            <button
+              type="button"
+              onClick={() => setRestockingProduct(null)}
+              className="absolute top-4 right-4 p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700">
+                <PackageCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Adjust Stock Level</h3>
+                <p className="text-xs text-slate-500 line-clamp-1">{restockingProduct.name}</p>
+              </div>
+            </div>
+
+            {restockError && (
+              <div className="mt-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{restockError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleConfirmRestock} className="mt-5 space-y-4">
+              {/* Current Status Pill */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/70 flex items-center justify-between text-xs">
+                <span className="text-slate-500">Current Stock Quantity:</span>
+                <span className="font-mono font-bold text-slate-900 text-sm">
+                  {restockingProduct.stock_qty} units
+                </span>
+              </div>
+
+              {/* Adjustment Type Segmented Control */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Adjustment Action
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRestockActionType("increment")}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold transition-all ${
+                      restockActionType === "increment"
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    + Add Units
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRestockActionType("decrement")}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold transition-all ${
+                      restockActionType === "decrement"
+                        ? "bg-rose-600 text-white shadow-xs"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    - Deduct Units
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRestockActionType("set")}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold transition-all ${
+                      restockActionType === "set"
+                        ? "bg-slate-900 text-white shadow-xs"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    = Set Exact
+                  </button>
+                </div>
+              </div>
+
+              {/* Amount */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  {restockActionType === "increment"
+                    ? "Quantity to Add"
+                    : restockActionType === "decrement"
+                    ? "Quantity to Deduct"
+                    : "New Stock Total"}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  required
+                  value={restockAmount}
+                  onChange={(e) => setRestockAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 focus:outline-hidden focus:bg-white focus:border-slate-900"
+                />
+                <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
+                  <span>Projected New Level:</span>
+                  <span className="font-bold text-slate-900">
+                    {restockActionType === "increment"
+                      ? restockingProduct.stock_qty + Number(restockAmount || 0)
+                      : restockActionType === "decrement"
+                      ? Math.max(0, restockingProduct.stock_qty - Number(restockAmount || 0))
+                      : Number(restockAmount || 0)}{" "}
+                    units
+                  </span>
+                </div>
+              </div>
+
+              {/* Reason */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Reason for Adjustment
+                </label>
+                <select
+                  value={restockReason}
+                  onChange={(e) => setRestockReason(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-hidden focus:bg-white focus:border-slate-900"
+                >
+                  <option value="Supplier Restock Shipment">Supplier Restock Shipment</option>
+                  <option value="Physical Inventory Count Audit">Physical Inventory Count Audit</option>
+                  <option value="Damaged / Expired Goods Write-off">Damaged / Expired Goods Write-off</option>
+                  <option value="Customer Return Re-shelved">Customer Return Re-shelved</option>
+                  <option value="Manual Quantity Correction">Manual Quantity Correction</option>
+                </select>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Audit Notes / Waybill Ref (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. PO-78902 received from Lagos distributor"
+                  value={restockNotes}
+                  onChange={(e) => setRestockNotes(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:bg-white focus:border-slate-900"
+                />
+              </div>
+
+              {/* Waitlist notification alert */}
+              {restockingProduct.waitlistCount > 0 && restockActionType !== "decrement" && (
+                <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 text-[11px] text-purple-900 flex items-start gap-2">
+                  <Bell className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong>{restockingProduct.waitlistCount} customer(s)</strong> are waiting for this product. Applying stock will automatically flag their waitlist records for notification!
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setRestockingProduct(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingRestock}
+                  className="inline-flex items-center gap-2 px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-colors shadow-xs"
+                >
+                  {submittingRestock ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-3.5 h-3.5" /> Confirm Stock Adjustment
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* STOCK ADJUSTMENT AUDIT HISTORY MODAL */}
+      {selectedHistoryProduct && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 relative animate-in fade-in zoom-in-95 duration-150 max-h-[85vh] flex flex-col">
+            <button
+              type="button"
+              onClick={() => setSelectedHistoryProduct(null)}
+              className="absolute top-4 right-4 p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700">
+                <History className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Inventory Audit Trail</h3>
+                <p className="text-xs text-slate-500 line-clamp-1">{selectedHistoryProduct.name}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 flex-1 overflow-y-auto pr-1">
+              {loadingHistory ? (
+                <div className="py-12 text-center text-slate-400">
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto text-amber-600 mb-2" />
+                  Loading audit logs...
+                </div>
+              ) : productAdjustmentLogs.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 text-xs">
+                  <History className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                  No stock adjustments logged for this product yet.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                  {productAdjustmentLogs.map((log: any) => (
+                    <div key={log.id} className="p-3 text-xs bg-white hover:bg-slate-50 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`font-black px-2 py-0.5 rounded text-[10px] ${
+                              (log.adjustment ?? log.change_qty) > 0
+                                ? "bg-emerald-100 text-emerald-800"
+                                : (log.adjustment ?? log.change_qty) < 0
+                                ? "bg-rose-100 text-rose-800"
+                                : "bg-slate-100 text-slate-700"
+                            }`}
+                          >
+                            {(log.adjustment ?? log.change_qty) > 0
+                              ? `+${log.adjustment ?? log.change_qty}`
+                              : (log.adjustment ?? log.change_qty)} units
+                          </span>
+                          <span className="font-semibold text-slate-800 capitalize">
+                            {log.reason}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-400">
+                          {new Date(log.created_at).toLocaleString("en-NG", {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          })}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between mt-2 text-[11px] text-slate-500">
+                        <div>
+                          Quantity: <span className="line-through text-slate-400">{log.previous_stock ?? log.previous_qty}</span>{" "}
+                          &rarr; <span className="font-bold text-slate-800">{log.new_stock ?? log.new_qty}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 italic">
+                          Admin Audit Entry
+                        </div>
+                      </div>
+
+                      {log.notes && (
+                        <div className="mt-1 text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-200/60">
+                          {log.notes}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-4 mt-2 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedHistoryProduct(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors"
+              >
+                Close Audit Trail
+              </button>
             </div>
           </div>
         </div>

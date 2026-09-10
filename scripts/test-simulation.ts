@@ -769,6 +769,111 @@ async function runTests() {
   }
   console.log();
 
+  // ==========================================
+  // TEST 17: WAREHOUSE INVENTORY MANAGEMENT, AUDIT TRAIL & RESTOCK PORTAL
+  // ==========================================
+  console.log("--- TEST 17: Warehouse Inventory Management, Audit Trail & Restock Portal ---");
+
+  // 1. Fetch live inventory dashboard snapshot & warehouse valuation
+  const inventoryRes = await fetch(`${BASE_URL}/api/admin/inventory`);
+  assert(inventoryRes.status === 200, "Inventory dashboard endpoint returns HTTP 200");
+  const invData = await inventoryRes.json();
+  assert(Array.isArray(invData.products), "Inventory returns products list");
+  assert(invData.products.length > 0, "Inventory has products across sectors");
+  assert(invData.metrics !== undefined, "Inventory includes warehouse valuation metrics");
+  assert(typeof invData.metrics.totalValuationKobo === "number", "Total inventory valuation is numeric kobo");
+  assert(typeof invData.metrics.totalStockUnits === "number", "Total stock units is numeric");
+  assert(typeof invData.metrics.lowStockCount === "number", "Low stock count is numeric");
+  assert(typeof invData.metrics.outOfStockCount === "number", "Out of stock count is numeric");
+  assert(typeof invData.metrics.inStockCount === "number", "Healthy in-stock count is numeric");
+
+  // 2. Sector & Status Filtering
+  const sectorFilterInvRes = await fetch(`${BASE_URL}/api/admin/inventory?sector=jewelry`);
+  assert(sectorFilterInvRes.status === 200, "Inventory sector filter returns HTTP 200");
+  const sectorFilterInvData = await sectorFilterInvRes.json();
+  assert(Array.isArray(sectorFilterInvData.products), "Sector-filtered inventory returns products");
+
+  const lowStockInvRes = await fetch(`${BASE_URL}/api/admin/inventory?status=low_stock`);
+  assert(lowStockInvRes.status === 200, "Inventory low_stock status filter returns HTTP 200");
+  const lowStockInvData = await lowStockInvRes.json();
+  assert(
+    lowStockInvData.products.every((p: any) => p.stockStatus === "low_stock"),
+    "Low stock filter returns only items with 1-5 units remaining"
+  );
+
+  // 3. Stock Adjustment & Audit Logging (PATCH)
+  const targetProduct = invData.products[0];
+  const invInitialStock = targetProduct.stock_qty;
+
+  const restockRes = await fetch(`${BASE_URL}/api/admin/inventory/${targetProduct.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      stock_qty: 20,
+      adjustment_type: "increment",
+      reason: "Supplier Restock Shipment",
+      notes: "Batch #RESTOCK-TEST-LAGOS-01",
+    }),
+  });
+  assert(restockRes.status === 200, "Restock PATCH returns HTTP 200");
+  const restockData = await restockRes.json();
+  assert(restockData.success === true, "Restock PATCH reports success");
+  assert(restockData.product.stock_qty === invInitialStock + 20, "Product stock incremented correctly");
+  assert(restockData.log !== null, "StockAdjustmentLog record created");
+  assert(restockData.log.adjustment === 20, "Audit log records correct adjustment quantity (+20)");
+  assert(restockData.log.previous_stock === invInitialStock, "Audit log records correct previous stock");
+  assert(restockData.log.new_stock === invInitialStock + 20, "Audit log records correct new stock");
+
+  // 4. Product Audit Trail History GET
+  const productDetailRes = await fetch(`${BASE_URL}/api/admin/inventory/${targetProduct.id}`);
+  assert(productDetailRes.status === 200, "Inventory product detail returns HTTP 200");
+  const productDetailData = await productDetailRes.json();
+  assert(Array.isArray(productDetailData.product.adjustment_logs), "Product details include adjustment audit logs array");
+  assert(productDetailData.product.adjustment_logs.length >= 1, "Audit logs contain the recent restock entry");
+
+  // 5. Customer Back-In-Stock Waitlist Notification Subscription
+  const waitlistEmail = `shopper-${Date.now()}@example.ng`;
+  const waitlistRes = await fetch(`${BASE_URL}/api/products/${targetProduct.id}/notify-restock`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: waitlistEmail,
+      phone: "+2348021112233",
+    }),
+  });
+  assert(waitlistRes.status === 200, "Customer restock waitlist returns HTTP 200");
+  const waitlistData = await waitlistRes.json();
+  assert(waitlistData.success === true, "Customer waitlist subscription succeeded");
+
+  // Duplicate subscription check
+  const duplicateWaitlistRes = await fetch(`${BASE_URL}/api/products/${targetProduct.id}/notify-restock`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: waitlistEmail,
+      phone: "+2348021112233",
+    }),
+  });
+  assert(duplicateWaitlistRes.status === 200, "Duplicate waitlist subscription handled gracefully");
+  const duplicateWaitlistData = await duplicateWaitlistRes.json();
+  assert(duplicateWaitlistData.alreadySubscribed === true, "System detects existing waitlist subscriber");
+
+  // 6. Revert stock to initial quantity to maintain test idempotency
+  const revertRes = await fetch(`${BASE_URL}/api/admin/inventory/${targetProduct.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      stock_qty: invInitialStock,
+      adjustment_type: "set",
+      reason: "Test Suite Idempotency Reversion",
+      notes: "Reset to initial test baseline",
+    }),
+  });
+  assert(revertRes.status === 200, "Stock reversion returns HTTP 200");
+  const revertData = await revertRes.json();
+  assert(revertData.product.stock_qty === invInitialStock, "Product stock reverted to initial value");
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");
