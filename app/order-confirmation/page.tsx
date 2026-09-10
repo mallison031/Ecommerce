@@ -4,7 +4,7 @@ import React, { useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useCart } from "@/context/cart-context";
 import Link from "next/link";
-import { CheckCircle2, MessageCircle, ArrowRight } from "lucide-react";
+import { CheckCircle2, MessageCircle, ArrowRight, Package } from "lucide-react";
 
 function ConfirmationContent() {
   const searchParams = useSearchParams();
@@ -42,10 +42,18 @@ function ConfirmationContent() {
         </div>
       </div>
 
-      <div className="mt-8 flex justify-center gap-4">
+      <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+        {orderId && (
+          <Link
+            href={`/track-order?order=${encodeURIComponent(orderId)}`}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-pink-600 text-white text-sm font-semibold hover:bg-pink-700 transition-all shadow-sm"
+          >
+            <Package className="w-4 h-4" /> Track Order Status
+          </Link>
+        )}
         <Link
           href="/"
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 transition-all"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-slate-100 text-slate-700 text-sm font-semibold hover:bg-slate-200 transition-all"
         >
           Continue Shopping <ArrowRight className="w-4 h-4" />
         </Link>

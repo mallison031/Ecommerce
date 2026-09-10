@@ -50,6 +50,14 @@ export default function RootLayout({
 
               {/* Header Actions */}
               <div className="flex items-center gap-3">
+                {/* Track Order */}
+                <Link
+                  href="/track-order"
+                  className="text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors hidden sm:inline-block"
+                >
+                  Track Order
+                </Link>
+
                 {/* WhatsApp Support Button */}
                 <a
                   href="https://wa.me/2348000000000?text=Hello%2C%20I%20have%20an%20inquiry%20about%20your%20store"
@@ -104,6 +112,11 @@ export default function RootLayout({
                     >
                       <MessageCircle className="w-4 h-4" /> Chat on WhatsApp
                     </a>
+                  </li>
+                  <li>
+                    <Link href="/track-order" className="hover:text-slate-900 transition-colors">
+                      Track Your Order
+                    </Link>
                   </li>
                   <li>Email: support@aurastore.ng</li>
                   <li>Delivery: Lagos 24-48 hrs, Nationwide 2-5 days</li>
