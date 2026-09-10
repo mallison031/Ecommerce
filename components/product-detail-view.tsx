@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { formatKoboToNaira } from "@/lib/utils";
 import { useCart } from "@/context/cart-context";
+import { useWishlist } from "@/context/wishlist-context";
 import { useRouter } from "next/navigation";
 import {
   ShoppingBag,
@@ -15,6 +16,7 @@ import {
   Minus,
   Sparkles,
   Star,
+  Heart,
 } from "lucide-react";
 import { NIGERIAN_STATES, calculateShippingFee } from "@/lib/shipping";
 
@@ -41,7 +43,23 @@ interface ProductDetailViewProps {
 
 export function ProductDetailView({ product, sector, ratingSummary }: ProductDetailViewProps) {
   const { addItem } = useCart();
+  const { isInWishlist, toggleWishlist } = useWishlist();
   const router = useRouter();
+
+  const inWishlist = isInWishlist(product.id);
+
+  const handleToggleWishlist = () => {
+    toggleWishlist({
+      productId: product.id,
+      name: product.name,
+      slug: product.slug,
+      priceKobo: product.price_kobo,
+      imageUrl: product.image_urls[0],
+      sectorSlug: sector.slug,
+      sectorName: sector.name,
+      inStock: product.stock_qty > 0,
+    });
+  };
 
   const [selectedImage, setSelectedImage] = useState(
     product.image_urls[0] || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&q=80"
@@ -258,6 +276,20 @@ export function ProductDetailView({ product, sector, ratingSummary }: ProductDet
               <Zap className="w-4 h-4 text-pink-400" /> Buy Now
             </button>
           </div>
+
+          {/* Wishlist Button */}
+          <button
+            type="button"
+            onClick={handleToggleWishlist}
+            className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border transition-all ${
+              inWishlist
+                ? "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100"
+                : "bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+            }`}
+          >
+            <Heart className={`w-4 h-4 ${inWishlist ? "fill-rose-500 text-rose-500 animate-in zoom-in-50" : "text-slate-400"}`} />
+            <span>{inWishlist ? "Saved in Your Wishlist" : "Save to Wishlist"}</span>
+          </button>
 
           {/* WhatsApp Direct Product Inquiry Button */}
           <a

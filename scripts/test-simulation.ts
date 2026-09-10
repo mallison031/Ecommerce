@@ -671,6 +671,43 @@ async function runTests() {
   assert(moderateData.review.is_approved === false, "Admin successfully hid review from storefront");
   console.log();
 
+  // --- TEST 15: Customer Wishlist & Favorites Engine ---
+  console.log("--- TEST 15: Customer Wishlist & Favorites Engine ---");
+  // 1. Rejects invalid payload
+  const invalidWishlistRes = await fetch(`${BASE_URL}/api/wishlist/details`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ productIds: "not-an-array" }),
+  });
+  assert(invalidWishlistRes.status === 400, "Wishlist details rejects non-array productIds with HTTP 400");
+
+  // 2. Empty array
+  const emptyWishlistRes = await fetch(`${BASE_URL}/api/wishlist/details`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ productIds: [] }),
+  });
+  assert(emptyWishlistRes.status === 200, "Wishlist details handles empty array with HTTP 200");
+  const emptyWishlistData = await emptyWishlistRes.json();
+  assert(emptyWishlistData.products.length === 0, "Wishlist details returns empty list for empty array");
+
+  // 3. Batch product verification & stock status
+  const wishlistDetailsRes = await fetch(`${BASE_URL}/api/wishlist/details`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ productIds: [product.id] }),
+  });
+  assert(wishlistDetailsRes.status === 200, "Wishlist details returns HTTP 200 for valid productIds");
+  const wishlistDetailsData = await wishlistDetailsRes.json();
+  assert(wishlistDetailsData.success === true, "Wishlist details API reports success: true");
+  assert(wishlistDetailsData.count === 1, "Wishlist details returns exact matched product count");
+  const verifiedProd = wishlistDetailsData.products[0];
+  assert(verifiedProd.productId === product.id, "Verified item ID matches requested ID");
+  assert(verifiedProd.priceKobo === product.price_kobo, "Verified item price matches live price snapshot");
+  assert(typeof verifiedProd.inStock === "boolean", "Verified item returns boolean inStock status");
+  assert(typeof verifiedProd.sectorSlug === "string", "Verified item includes sector slug for routing");
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");
