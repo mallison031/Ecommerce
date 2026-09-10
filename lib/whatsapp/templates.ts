@@ -35,6 +35,11 @@ export const TEMPLATES = {
     category: "UTILITY",
     approved: true,
   },
+  abandoned_cart_reminder: {
+    name: "abandoned_cart_reminder",
+    category: "MARKETING",
+    approved: true,
+  },
 } as const satisfies Record<string, WhatsAppTemplateConfig>;
 
 export type TemplateKey = keyof typeof TEMPLATES;

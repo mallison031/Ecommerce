@@ -347,6 +347,80 @@ async function runTests() {
   }
   console.log();
 
+  // --- TEST 10: 1-Click Checkout Resume API ---
+  console.log("--- TEST 10: 1-Click Checkout Resume API ---");
+  const abandonedCheckoutRes = await fetch(`${BASE_URL}/api/checkout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "Titi Adeyemi",
+      email: "titi.adeyemi@example.com",
+      phone: "08034567890",
+      deliveryAddress: "12 Admiralty Way, Lekki Phase 1, Lagos",
+      whatsappOptIn: true,
+      items: [{ productId: product.id, quantity: 1 }],
+    }),
+  });
+  const abandonedCheckoutData = await abandonedCheckoutRes.json();
+  assert(abandonedCheckoutData.success === true, "Pending cart checkout created for recovery simulation");
+  const testOrderId = abandonedCheckoutData.orderId;
+
+  const resumeGetRes = await fetch(`${BASE_URL}/api/checkout/resume?orderId=${testOrderId}`);
+  assert(resumeGetRes.status === 200, "Checkout resume GET returns HTTP 200");
+  const resumeGetData = await resumeGetRes.json();
+  assert(resumeGetData.success === true, "Checkout resume GET reports success: true");
+  assert(Array.isArray(resumeGetData.order.items) && resumeGetData.order.items.length > 0, "Checkout resume contains snapshot items");
+
+  const resumePostRes = await fetch(`${BASE_URL}/api/checkout/resume`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orderId: testOrderId, discountCode: "SAVE5" }),
+  });
+  assert(resumePostRes.status === 200, "Checkout resume POST returns HTTP 200");
+  const resumePostData = await resumePostRes.json();
+  assert(resumePostData.success === true, "Checkout resume POST returns success: true");
+  assert(typeof resumePostData.authorizationUrl === "string", "Checkout resume generates authorization URL");
+  assert(resumePostData.discountAppliedKobo > 0, "Checkout resume successfully applied 5% discount");
+  console.log();
+
+  // --- TEST 11: Abandoned Cart Sweep & Admin Recovery API ---
+  console.log("--- TEST 11: Abandoned Cart Sweep & Admin Recovery API ---");
+  const sweepRes = await fetch(`${BASE_URL}/api/cron/abandoned-sweep`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.CRON_SECRET || "sim_cron_secret"}`,
+    },
+    body: JSON.stringify({ thresholdMinutes: 0 }),
+  });
+  assert(sweepRes.status === 200, "Cron sweep endpoint returns HTTP 200");
+  const sweepData = await sweepRes.json();
+  assert(sweepData.success === true, "Cron sweep executed successfully");
+
+  const recoveryLog = await prisma.messageNotificationLog.findFirst({
+    where: {
+      order_id: testOrderId,
+      template_name: "abandoned_cart_email",
+    },
+  });
+  assert(recoveryLog !== null, "Abandoned cart sweep logged recovery email in MessageNotificationLog");
+
+  const adminAbandonedGetRes = await fetch(`${BASE_URL}/api/admin/abandoned`);
+  assert(adminAbandonedGetRes.status === 200, "Admin abandoned GET returns HTTP 200");
+  const adminAbandonedData = await adminAbandonedGetRes.json();
+  assert(adminAbandonedData.success === true, "Admin abandoned API returns success");
+  assert(adminAbandonedData.metrics.remindersSentCount >= 1, "Admin recovery metrics track dispatched reminders");
+
+  const adminTriggerRes = await fetch(`${BASE_URL}/api/admin/abandoned`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orderId: testOrderId }),
+  });
+  assert(adminTriggerRes.status === 200, "Admin manual recovery reminder trigger returns HTTP 200");
+  const adminTriggerData = await adminTriggerRes.json();
+  assert(adminTriggerData.success === true, "Admin manual recovery trigger succeeded");
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");
