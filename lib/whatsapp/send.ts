@@ -114,3 +114,63 @@ async function logNotification(orderId: string, templateKey: string, status: "se
     console.error("[WhatsApp] Failed to write MessageNotificationLog:", logErr);
   }
 }
+
+export async function sendWhatsAppTextMessage({
+  toE164,
+  text,
+  orderId,
+}: {
+  toE164: string;
+  text: string;
+  orderId?: string;
+}): Promise<SendTemplateResult> {
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+
+  if (!phoneNumberId || !accessToken) {
+    console.info(`[WhatsApp Bot (Mock)] To: ${toE164} | Message:\n${text}`);
+    if (orderId) {
+      await logNotification(orderId, "bot_text_reply", "sent");
+    }
+    return { skipped: false, success: true };
+  }
+
+  try {
+    const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: toE164,
+        type: "text",
+        text: { body: text, preview_url: true },
+      }),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error(`[WhatsApp Bot] Graph API error (${res.status}): ${errBody}`);
+      if (orderId) {
+        await logNotification(orderId, "bot_text_reply", "failed");
+      }
+      return { skipped: false, success: false, error: errBody };
+    }
+
+    if (orderId) {
+      await logNotification(orderId, "bot_text_reply", "sent");
+    }
+    return { skipped: false, success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[WhatsApp Bot] Network exception sending message:", message);
+    if (orderId) {
+      await logNotification(orderId, "bot_text_reply", "failed");
+    }
+    return { skipped: false, success: false, error: message };
+  }
+}
