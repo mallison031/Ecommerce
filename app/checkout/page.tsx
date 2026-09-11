@@ -40,7 +40,7 @@ export default function CheckoutPage() {
   const [phone, setPhone] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [state, setState] = useState<string>("Lagos");
-  const [lagosZone, setLagosZone] = useState<"lagos_mainland" | "lagos_island">("lagos_mainland");
+  const [lagosZone, setLagosZone] = useState<string>("lagos_mainland");
   const [isExpress, setIsExpress] = useState(false);
   const [whatsappOptIn, setWhatsappOptIn] = useState(false);
 
@@ -384,7 +384,7 @@ export default function CheckoutPage() {
                       </label>
                       <select
                         value={lagosZone}
-                        onChange={(e) => setLagosZone(e.target.value as "lagos_mainland" | "lagos_island")}
+                        onChange={(e) => setLagosZone(e.target.value)}
                         className="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
                       >
                         {LAGOS_ZONES.map((z) => (

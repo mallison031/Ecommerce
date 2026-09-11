@@ -428,6 +428,18 @@ async function runTests() {
   const shippingInfo = await shippingInfoRes.json();
   assert(Array.isArray(shippingInfo.states) && shippingInfo.states.length >= 36, "Shipping API returns Nigerian states");
   assert(shippingInfo.freeShippingThresholdKobo === 5000000, "Free shipping threshold is ₦50,000");
+  assert(Array.isArray(shippingInfo.lagosZones) && shippingInfo.lagosZones.length >= 8, "Shipping API returns expanded Lagos zones (8+ zones)");
+  assert(shippingInfo.expressAddonKobo === 450000, "Same-day express add-on reflects 200% increase to ₦4,500");
+
+  // Test Lagos Lekki / Ajah calculation
+  const lekkiCalcRes = await fetch(`${BASE_URL}/api/shipping/calculate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ state: "Lagos", lagosZone: "lagos_lekki_ajah", subtotalKobo: 1500000 }),
+  });
+  assert(lekkiCalcRes.status === 200, "Lekki/Ajah shipping calculation returns HTTP 200");
+  const lekkiCalc = await lekkiCalcRes.json();
+  assert(lekkiCalc.shippingFeeKobo === 300000, "Lekki/Ajah base fee is ₦3,000");
 
   // Test Lagos Mainland calculation
   const lagosMainlandCalcRes = await fetch(`${BASE_URL}/api/shipping/calculate`, {
@@ -479,8 +491,8 @@ async function runTests() {
   });
   assert(shippingCheckoutRes.status === 200, "Checkout with dynamic shipping returns HTTP 200");
   const shippingCheckoutData = await shippingCheckoutRes.json();
-  assert(shippingCheckoutData.shippingFeeKobo === 400000, "Shipping fee includes Island base (₦2,500) + Express (₦1,500)");
-  assert(shippingCheckoutData.totalKobo === product.price_kobo + 400000, "Order total correctly includes item price and shipping fee");
+  assert(shippingCheckoutData.shippingFeeKobo === 700000, "Shipping fee includes Island base (₦2,500) + Express (₦4,500)");
+  assert(shippingCheckoutData.totalKobo === product.price_kobo + 700000, "Order total correctly includes item price and shipping fee");
   console.log();
 
   // --- TEST 13: Promotions, Discount Coupons & Sector Flash Sales Engine ---

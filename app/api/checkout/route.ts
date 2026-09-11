@@ -12,7 +12,7 @@ const checkoutSchema = z.object({
   phone: z.string().min(8, "Valid phone number is required"),
   deliveryAddress: z.string().min(5, "Delivery address is required"),
   state: z.string().optional(),
-  lagosZone: z.enum(["lagos_mainland", "lagos_island"]).optional(),
+  lagosZone: z.string().optional(),
   isExpress: z.boolean().optional().default(false),
   couponCode: z.string().optional(),
   whatsappOptIn: z.boolean().default(false),
