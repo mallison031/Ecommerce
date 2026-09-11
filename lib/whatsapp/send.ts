@@ -249,3 +249,24 @@ export async function notifyAdminReturnRequest({
   return sendWhatsAppTextMessage({ toE164: adminPhone, text, orderId });
 }
 
+export async function sendReviewRequestNotification({
+  toE164,
+  customerName,
+  orderNumber,
+  productName,
+  reviewUrl,
+  orderId,
+}: {
+  toE164: string;
+  customerName: string;
+  orderNumber: number;
+  productName: string;
+  reviewUrl: string;
+  orderId?: string;
+}): Promise<SendTemplateResult> {
+  const text = `⭐ *How was your order, ${customerName}?*\n\nYour order *#${orderNumber}* containing *${productName}* has been delivered!\n\nHelp other shoppers by leaving a quick star rating & verified review:\n🔗 ${reviewUrl}\n\nThank you for shopping with Aura Store!`;
+
+  return sendWhatsAppTextMessage({ toE164, text, orderId });
+}
+
+

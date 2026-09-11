@@ -1362,6 +1362,116 @@ async function runTests() {
   assert(cancelReqData.return_request.status === "cancelled", "Return request status is 'cancelled'");
   console.log();
 
+  // ==========================================
+  // TEST 21: Customer Review Reminders & Admin Live Feed / Daily Settlement
+  // ==========================================
+  console.log("--- TEST 21: Review Reminders & Admin Live Feed / Settlement Reconciliation ---");
+
+  // Create a delivered order for testing review reminders
+  const reviewTestOrder = await prisma.order.create({
+    data: {
+      customer_id: rmaVerifyData.customer.id,
+      status: "delivered",
+      subtotal_kobo: 3500000, // NGN 35,000
+      total_kobo: 3750000,    // NGN 37,500 (incl NGN 2,500 delivery)
+      delivery_address: "12 Marine Road, Apapa, Lagos",
+      delivered_at: new Date(Date.now() - 48 * 60 * 60 * 1000), // 48h ago
+      review_reminder_sent_at: null,
+      items: {
+        create: [
+          {
+            product_id: product.id,
+            product_name_snapshot: product.name,
+            unit_price_kobo_snapshot: 3500000,
+            qty: 1,
+            line_total_kobo: 3500000,
+          },
+        ],
+      },
+    },
+    include: { items: true },
+  });
+
+  // 1. Cron sweep for review reminders
+  const reviewCronRes = await fetch(`${BASE_URL}/api/cron/review-reminders`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  assert(reviewCronRes.status === 200, "Cron review-reminders returns HTTP 200");
+  const reviewCronData = await reviewCronRes.json();
+  assert(reviewCronData.success === true, "Cron response has success === true");
+  assert(typeof reviewCronData.remindersSent === "number", "Cron response reports remindersSent count");
+
+  const updatedReviewOrder = await prisma.order.findUnique({
+    where: { id: reviewTestOrder.id },
+  });
+  assert(
+    updatedReviewOrder?.review_reminder_sent_at !== null,
+    "Delivered order review_reminder_sent_at was stamped by automated sweep"
+  );
+
+  // 2. Manual 1-click admin review request trigger
+  const manualReviewRes = await fetch(
+    `${BASE_URL}/api/admin/orders/${reviewTestOrder.id}/send-review-request`,
+    {
+      method: "POST",
+    }
+  );
+  assert(manualReviewRes.status === 200, "Manual send-review-request returns HTTP 200");
+  const manualReviewData = await manualReviewRes.json();
+  assert(manualReviewData.success === true, "Manual review trigger returns success === true");
+  assert(
+    manualReviewData.reviewUrl.includes("review=true"),
+    "Manual review trigger generates magic link with review=true query param"
+  );
+
+  // 3. Admin Live Push Feed
+  const liveFeedRes = await fetch(`${BASE_URL}/api/admin/live-feed`);
+  assert(liveFeedRes.status === 200, "Admin live-feed returns HTTP 200");
+  const liveFeedData = await liveFeedRes.json();
+  assert(liveFeedData.success === true, "Live feed returns success === true");
+  assert(
+    typeof liveFeedData.summary.todayOrdersCount === "number",
+    "Live feed includes todayOrdersCount"
+  );
+  assert(
+    typeof liveFeedData.summary.todayRevenueKobo === "number",
+    "Live feed includes todayRevenueKobo"
+  );
+  assert(Array.isArray(liveFeedData.events), "Live feed returns events array");
+
+  // 4. Daily Settlement Reconciliation JSON
+  const settlementJsonRes = await fetch(`${BASE_URL}/api/admin/settlement?date=today&format=json`);
+  assert(settlementJsonRes.status === 200, "Settlement API JSON returns HTTP 200");
+  const settlementData = await settlementJsonRes.json();
+  assert(settlementData.success === true, "Settlement API JSON returns success === true");
+  assert(
+    settlementData.metrics.netSettlementPayoutKobo ===
+      settlementData.metrics.grossVolumeKobo -
+        settlementData.metrics.totalGatewayFeesKobo -
+        settlementData.metrics.totalRefundsKobo,
+    "Settlement net payout matches exact Paystack reconciliation formula (Gross - Fees - Refunds)"
+  );
+
+  // 5. Daily Settlement Reconciliation CSV Export
+  const settlementCsvRes = await fetch(`${BASE_URL}/api/admin/settlement?date=today&format=csv`);
+  assert(settlementCsvRes.status === 200, "Settlement CSV export returns HTTP 200");
+  const settlementCsvContentType = settlementCsvRes.headers.get("content-type") || "";
+  assert(
+    settlementCsvContentType.includes("text/csv"),
+    "Settlement CSV export sets Content-Type text/csv"
+  );
+  const csvText = await settlementCsvRes.text();
+  assert(
+    csvText.includes("DAILY SETTLEMENT RECONCILIATION REPORT"),
+    "Settlement CSV contains header title"
+  );
+  assert(
+    csvText.includes("NET EXPECTED PAYSTACK PAYOUT"),
+    "Settlement CSV contains net payout summary line"
+  );
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");

@@ -133,6 +133,7 @@ model Order {
   paid_at          DateTime?
   reminder_sent_at DateTime?
   abandoned_at     DateTime?
+  review_reminder_sent_at DateTime?
   created_at       DateTime          @default(now())
   updated_at       DateTime          @updatedAt
 
