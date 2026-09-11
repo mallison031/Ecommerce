@@ -110,6 +110,7 @@ export async function GET(req: NextRequest) {
         phone: customer.phone,
         whatsapp_opt_in: customer.whatsapp_opt_in,
         whatsapp_phone_e164: customer.whatsapp_phone_e164,
+        loyalty_points: customer.loyalty_points || 0,
         created_at: customer.created_at,
       },
       orders,

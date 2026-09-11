@@ -34,11 +34,14 @@ import {
   Image as ImageIcon,
   Copy,
   Sparkles,
+  Crown,
+  Award,
 } from "lucide-react";
 import { formatKoboToNaira } from "@/lib/utils";
 import { useCart } from "@/context/cart-context";
 import CustomerReturnsView from "@/components/customer-returns-view";
 import ReturnRequestModal from "@/components/return-request-modal";
+import CustomerLoyaltyCard from "@/components/customer-loyalty-card";
 
 const NIGERIAN_STATES = [
   "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno",
@@ -111,7 +114,7 @@ function AccountPortalContent() {
   });
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<"orders" | "addresses" | "saved" | "settings" | "returns">("orders");
+  const [activeTab, setActiveTab] = useState<"orders" | "addresses" | "saved" | "settings" | "returns" | "loyalty">("orders");
   const [returnRequests, setReturnRequests] = useState<any[]>([]);
   const [returnModalOrder, setReturnModalOrder] = useState<Order | null>(null);
   const [returnBanner, setReturnBanner] = useState<string | null>(null);
@@ -654,6 +657,24 @@ function AccountPortalContent() {
             </div>
             <div className="text-[11px] text-amber-800/80 mt-0.5">Across all sectors</div>
           </div>
+
+          <div
+            onClick={() => setActiveTab("loyalty")}
+            className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-200/60 cursor-pointer hover:bg-indigo-100/60 transition-all group"
+          >
+            <div className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Crown className="w-3.5 h-3.5 text-amber-500" /> Rewards
+              </span>
+              <span className="text-[10px] bg-indigo-200/80 text-indigo-900 px-1.5 py-0.2 rounded-full font-bold">VIP</span>
+            </div>
+            <div className="text-xl font-black text-indigo-950 mt-2 truncate">
+              {(customer?.loyalty_points || 0).toLocaleString()} pts
+            </div>
+            <div className="text-[11px] text-indigo-700/80 mt-0.5 group-hover:text-indigo-900 flex items-center gap-0.5">
+              View perks &rarr;
+            </div>
+          </div>
         </div>
       </div>
 
@@ -669,6 +690,18 @@ function AccountPortalContent() {
           }`}
         >
           <Package className="w-4 h-4" /> My Orders ({orders.length})
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("loyalty")}
+          className={`flex items-center gap-2 py-3 px-4 border-b-2 transition-all shrink-0 ${
+            activeTab === "loyalty"
+              ? "border-pink-600 text-pink-600"
+              : "border-transparent text-slate-500 hover:text-slate-900"
+          }`}
+        >
+          <Crown className="w-4 h-4 text-amber-500" /> Rewards Club
         </button>
 
         <button
@@ -1207,6 +1240,11 @@ function AccountPortalContent() {
           onStartReturn={() => setActiveTab("orders")}
         />
       )}
+
+      {/* ==========================================
+          TAB 6: REWARDS CLUB & VIP LOYALTY POINTS
+      ========================================== */}
+      {activeTab === "loyalty" && <CustomerLoyaltyCard />}
 
       {/* ==========================================
           RETURN REQUEST MODAL

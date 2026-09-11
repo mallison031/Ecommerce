@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ProductDetailView } from "@/components/product-detail-view";
 import { ProductCard, ProductData } from "@/components/product-card";
 import { ProductReviewsSection } from "@/components/product-reviews-section";
+import { FrequentlyBoughtTogether } from "@/components/frequently-bought-together";
 import { getProductReviewsAndSummary } from "@/lib/reviews";
 import type { Metadata } from "next";
 
@@ -78,6 +79,9 @@ export default async function ProductDetailPage({
 
       {/* Main Product Detail Section */}
       <ProductDetailView product={product} sector={product.sector} ratingSummary={summary} />
+
+      {/* Frequently Bought Together Bundle Recommendations */}
+      <FrequentlyBoughtTogether primaryProduct={product} />
 
       {/* Customer Reviews & UGC Section */}
       <div id="reviews-section">

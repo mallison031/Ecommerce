@@ -1472,6 +1472,210 @@ async function runTests() {
   );
   console.log();
 
+  // ==========================================
+  // TEST 22: Frequently Bought Together (Bundle Engine)
+  // ==========================================
+  console.log("--- TEST 22: Frequently Bought Together (Bundle Engine) ---");
+
+  // Find a secondary product to bundle
+  const secondaryProduct = await prisma.product.findFirst({
+    where: {
+      id: { not: product.id },
+      is_active: true,
+    },
+  });
+  assert(!!secondaryProduct, "Found secondary product for bundle testing");
+
+  // 1. Fetch dynamic bundle recommendations for storefront
+  const bundleRecRes = await fetch(`${BASE_URL}/api/products/${product.id}/bundles`);
+  assert(bundleRecRes.status === 200, "Bundle recommendations endpoint returns HTTP 200");
+  const bundleRecData = await bundleRecRes.json();
+  assert(bundleRecData.success === true, "Bundle recommendations reports success: true");
+  assert(bundleRecData.primaryProduct.id === product.id, "Bundle returns correct primary product");
+  assert(Array.isArray(bundleRecData.bundleItems), "Bundle returns bundleItems array");
+
+  // 2. Admin creates explicit bundle pairing
+  const createBundleRes = await fetch(`${BASE_URL}/api/admin/bundles`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      productId: product.id,
+      bundleItemId: secondaryProduct!.id,
+    }),
+  });
+  assert(createBundleRes.status === 200, "Admin create bundle returns HTTP 200");
+  const createBundleData = await createBundleRes.json();
+  assert(createBundleData.success === true, "Admin create bundle reports success: true");
+  const createdBundleId = createBundleData.bundle.id;
+
+  // 3. Admin lists all bundles
+  const listBundlesRes = await fetch(`${BASE_URL}/api/admin/bundles`);
+  assert(listBundlesRes.status === 200, "Admin list bundles returns HTTP 200");
+  const listBundlesData = await listBundlesRes.json();
+  assert(
+    listBundlesData.bundles.some((b: any) => b.id === createdBundleId),
+    "Created bundle pairing appears in admin bundles list"
+  );
+
+  // 4. Admin deletes bundle pairing
+  const deleteBundleRes = await fetch(`${BASE_URL}/api/admin/bundles?id=${createdBundleId}`, {
+    method: "DELETE",
+  });
+  assert(deleteBundleRes.status === 200, "Admin delete bundle returns HTTP 200");
+  console.log();
+
+  // ==========================================
+  // TEST 23: Customer Loyalty Points & Tier Progress (Without Naira worth)
+  // ==========================================
+  console.log("--- TEST 23: Customer Loyalty & Rewards Points System ---");
+
+  // Fetch customer loyalty status using auth token
+  const loyaltyRes = await fetch(`${BASE_URL}/api/customer/loyalty`, {
+    headers: rmaAuthHeaders,
+  });
+  assert(loyaltyRes.status === 200, "Customer loyalty endpoint returns HTTP 200");
+  const loyaltyData = await loyaltyRes.json();
+  assert(loyaltyData.success === true, "Loyalty response reports success: true");
+  assert(typeof loyaltyData.points === "number", "Loyalty response returns numeric points balance");
+  assert(typeof loyaltyData.tier.name === "string", "Loyalty response returns member tier name");
+  assert(loyaltyData.redemptionStatus === "unlocking_soon", "Loyalty points redemption status is unlocking_soon");
+  assert(
+    !JSON.stringify(loyaltyData).includes("worth_naira") && !JSON.stringify(loyaltyData).includes("naira_value"),
+    "Loyalty response preserves secrecy of Naira conversion value as requested"
+  );
+
+  // Directly award points via database to test accrual
+  const preLoyaltyCustomer = await prisma.customer.findUnique({ where: { id: rmaVerifyData.customer.id } });
+  const prePoints = preLoyaltyCustomer?.loyalty_points || 0;
+
+  await prisma.customer.update({
+    where: { id: rmaVerifyData.customer.id },
+    data: { loyalty_points: { increment: 250 } },
+  });
+  await prisma.loyaltyPointsLedger.create({
+    data: {
+      customer_id: rmaVerifyData.customer.id,
+      points: 250,
+      reason: "Special Promo Points Bonus",
+    },
+  });
+
+  const postLoyaltyRes = await fetch(`${BASE_URL}/api/customer/loyalty`, {
+    headers: rmaAuthHeaders,
+  });
+  const postLoyaltyData = await postLoyaltyRes.json();
+  assert(postLoyaltyData.points === prePoints + 250, "Loyalty points balance reflects +250 earned points");
+  assert(
+    postLoyaltyData.ledger.some((l: any) => l.reason === "Special Promo Points Bonus"),
+    "Loyalty ledger records the points activity entry"
+  );
+  console.log();
+
+  // ==========================================
+  // TEST 24: Bulk Order Fulfillment & Warehouse Dispatch Manifest
+  // ==========================================
+  console.log("--- TEST 24: Bulk Fulfillment & Dispatch Manifest ---");
+
+  // Create two orders for bulk fulfillment test
+  const bulkOrder1 = await prisma.order.create({
+    data: {
+      customer_id: rmaVerifyData.customer.id,
+      status: "paid",
+      subtotal_kobo: 2000000,
+      total_kobo: 2200000,
+      delivery_address: "10 Broad Street, Lagos Island",
+      items: {
+        create: [
+          {
+            product_id: product.id,
+            product_name_snapshot: product.name,
+            unit_price_kobo_snapshot: 2000000,
+            qty: 2,
+            line_total_kobo: 2000000,
+          },
+        ],
+      },
+    },
+  });
+
+  const bulkOrder2 = await prisma.order.create({
+    data: {
+      customer_id: rmaVerifyData.customer.id,
+      status: "paid",
+      subtotal_kobo: 1500000,
+      total_kobo: 1700000,
+      delivery_address: "45 Allen Avenue, Ikeja, Lagos",
+      items: {
+        create: [
+          {
+            product_id: secondaryProduct!.id,
+            product_name_snapshot: secondaryProduct!.name,
+            unit_price_kobo_snapshot: 1500000,
+            qty: 1,
+            line_total_kobo: 1500000,
+          },
+        ],
+      },
+    },
+  });
+
+  // 1. Bulk Status Update: Mark both shipped with Speedaf Express
+  const bulkUpdateRes = await fetch(`${BASE_URL}/api/admin/orders/bulk-status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      orderIds: [bulkOrder1.id, bulkOrder2.id],
+      status: "shipped",
+      courier_name: "Speedaf Express",
+    }),
+  });
+  assert(bulkUpdateRes.status === 200, "Bulk status update returns HTTP 200");
+  const bulkUpdateData = await bulkUpdateRes.json();
+  assert(bulkUpdateData.success === true, "Bulk status reports success: true");
+  assert(bulkUpdateData.updatedCount === 2, "Bulk update reports 2 orders updated");
+
+  // Verify in database
+  const refreshedBulkOrder1 = await prisma.order.findUnique({ where: { id: bulkOrder1.id } });
+  assert(refreshedBulkOrder1?.status === "shipped", "Bulk order 1 transitioned to shipped");
+  assert(refreshedBulkOrder1?.courier_name === "Speedaf Express", "Bulk order 1 assigned Speedaf Express");
+
+  // 2. Dispatch Manifest JSON
+  const manifestJsonRes = await fetch(
+    `${BASE_URL}/api/admin/orders/manifest?ids=${bulkOrder1.id},${bulkOrder2.id}&format=json`
+  );
+  assert(manifestJsonRes.status === 200, "Manifest JSON returns HTTP 200");
+  const manifestJsonData = await manifestJsonRes.json();
+  assert(manifestJsonData.success === true, "Manifest reports success: true");
+  assert(manifestJsonData.metrics.totalOrders === 2, "Manifest includes 2 total orders");
+  assert(Array.isArray(manifestJsonData.pickingSummary), "Manifest includes product picking summary");
+
+  // 3. Dispatch Manifest Printable HTML
+  const manifestHtmlRes = await fetch(
+    `${BASE_URL}/api/admin/orders/manifest?ids=${bulkOrder1.id},${bulkOrder2.id}&format=html`
+  );
+  assert(manifestHtmlRes.status === 200, "Manifest HTML returns HTTP 200");
+  const manifestHtml = await manifestHtmlRes.text();
+  assert(
+    manifestHtml.includes("DAILY WAREHOUSE DISPATCH MANIFEST"),
+    "Manifest HTML includes warehouse title"
+  );
+  assert(
+    manifestHtml.includes("Warehouse Item Pick List Summary"),
+    "Manifest HTML includes SKU pick list section"
+  );
+
+  // 4. Dispatch Manifest CSV
+  const manifestCsvRes = await fetch(
+    `${BASE_URL}/api/admin/orders/manifest?ids=${bulkOrder1.id},${bulkOrder2.id}&format=csv`
+  );
+  assert(manifestCsvRes.status === 200, "Manifest CSV returns HTTP 200");
+  const manifestCsv = await manifestCsvRes.text();
+  assert(
+    manifestCsv.includes("COURIER DISPATCH STOPS"),
+    "Manifest CSV includes courier stops table"
+  );
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");
