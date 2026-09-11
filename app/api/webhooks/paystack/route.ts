@@ -137,6 +137,25 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      // Award Loyalty Points to customer (1 point per ₦100 spent)
+      const pointsEarned = Math.floor(amount / 10000);
+      if (pointsEarned > 0 && targetOrder.customer_id) {
+        await tx.customer.update({
+          where: { id: targetOrder.customer_id },
+          data: {
+            loyalty_points: { increment: pointsEarned },
+          },
+        });
+        await tx.loyaltyPointsLedger.create({
+          data: {
+            customer_id: targetOrder.customer_id,
+            order_id: targetOrder.id,
+            points: pointsEarned,
+            reason: `Order #${targetOrder.order_number} Purchase Reward`,
+          },
+        });
+      }
+
       return { orderRecord, invoice, receipt };
     });
 

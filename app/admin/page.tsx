@@ -273,6 +273,40 @@ export default function AdminDashboardPage() {
     }
   };
 
+  // Bulk Order Operations State
+  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
+  const [bulkCourier, setBulkCourier] = useState<string>("GIG Logistics");
+  const [bulkUpdating, setBulkUpdating] = useState<boolean>(false);
+
+  const handleBulkStatusUpdate = async (newStatus: string) => {
+    if (selectedOrderIds.length === 0) return;
+    setBulkUpdating(true);
+    try {
+      const res = await fetch("/api/admin/orders/bulk-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderIds: selectedOrderIds,
+          status: newStatus,
+          courier_name: newStatus === "shipped" ? bulkCourier : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        await fetchOrders();
+        setSelectedOrderIds([]);
+        alert(data.message || `Successfully updated ${selectedOrderIds.length} orders!`);
+      } else {
+        alert(data.error || "Failed to update orders");
+      }
+    } catch (err) {
+      console.error("Bulk status update failed:", err);
+      alert("Network error updating orders");
+    } finally {
+      setBulkUpdating(false);
+    }
+  };
+
   const fetchSalesData = async () => {
     setSalesLoading(true);
     try {
@@ -1066,6 +1100,23 @@ export default function AdminDashboardPage() {
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider">
                   <tr>
+                    <th className="p-3.5 w-8">
+                      <input
+                        type="checkbox"
+                        checked={
+                          filteredOrders.length > 0 &&
+                          filteredOrders.every((o) => selectedOrderIds.includes(o.id))
+                        }
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedOrderIds(filteredOrders.map((o) => o.id));
+                          } else {
+                            setSelectedOrderIds([]);
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                      />
+                    </th>
                     <th className="p-3.5">Order #</th>
                     <th className="p-3.5">Customer & Contact</th>
                     <th className="p-3.5">Items</th>
@@ -1077,13 +1128,28 @@ export default function AdminDashboardPage() {
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                   {filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-slate-400">
+                      <td colSpan={7} className="p-8 text-center text-slate-400">
                         No orders match the current filter or search criteria.
                       </td>
                     </tr>
                   ) : (
                     filteredOrders.map((order) => (
                       <tr key={order.id} className="hover:bg-slate-50/50">
+                        <td className="p-3.5 w-8">
+                          <input
+                            type="checkbox"
+                            checked={selectedOrderIds.includes(order.id)}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              if (e.target.checked) {
+                                setSelectedOrderIds((prev) => [...prev, order.id]);
+                              } else {
+                                setSelectedOrderIds((prev) => prev.filter((id) => id !== order.id));
+                              }
+                            }}
+                            className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900 cursor-pointer"
+                          />
+                        </td>
                         <td className="p-3.5 font-bold text-slate-900">
                           #{order.order_number}
                           <div className="text-[10px] font-normal text-slate-400 mt-0.5">
@@ -1250,6 +1316,83 @@ export default function AdminDashboardPage() {
               </table>
             </div>
           </div>
+
+          {/* Sticky Bulk Action Bar */}
+          {selectedOrderIds.length > 0 && (
+            <div className="sticky bottom-4 z-40 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700 flex flex-wrap items-center justify-between gap-4 animate-in slide-in-from-bottom-2">
+              <div className="flex items-center gap-3">
+                <span className="bg-blue-600 text-white font-black text-xs px-2.5 py-1 rounded-full">
+                  {selectedOrderIds.length} Selected
+                </span>
+                <span className="text-xs text-slate-300 hidden sm:inline">
+                  Batch fulfillment & warehouse dispatch
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <select
+                  value={bulkCourier}
+                  onChange={(e) => setBulkCourier(e.target.value)}
+                  className="bg-slate-800 border border-slate-700 text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-hidden"
+                >
+                  <option value="GIG Logistics">GIG Logistics</option>
+                  <option value="Fez Delivery">Fez Delivery</option>
+                  <option value="Speedaf Express">Speedaf Express</option>
+                  <option value="Gokada">Gokada</option>
+                  <option value="DHL Express">DHL Express</option>
+                </select>
+
+                <button
+                  onClick={() => handleBulkStatusUpdate("shipped")}
+                  disabled={bulkUpdating}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors shadow-xs"
+                >
+                  {bulkUpdating ? "Updating..." : "Ship Selected"}
+                </button>
+
+                <button
+                  onClick={() => handleBulkStatusUpdate("delivered")}
+                  disabled={bulkUpdating}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors shadow-xs"
+                >
+                  Deliver Selected
+                </button>
+
+                <button
+                  onClick={() =>
+                    window.open(
+                      `/api/admin/orders/manifest?ids=${selectedOrderIds.join(",")}&format=html`,
+                      "_blank"
+                    )
+                  }
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-bold transition-colors"
+                  title="Print warehouse pick list and courier dispatch manifest"
+                >
+                  🖨️ Print Manifest
+                </button>
+
+                <button
+                  onClick={() =>
+                    window.open(
+                      `/api/admin/orders/manifest?ids=${selectedOrderIds.join(",")}&format=csv`,
+                      "_blank"
+                    )
+                  }
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-bold transition-colors"
+                  title="Export dispatch manifest as CSV"
+                >
+                  📥 Export CSV
+                </button>
+
+                <button
+                  onClick={() => setSelectedOrderIds([])}
+                  className="text-xs text-slate-400 hover:text-slate-200 ml-1 underline cursor-pointer"
+                >
+                  Deselect
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

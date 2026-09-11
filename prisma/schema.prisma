@@ -91,6 +91,8 @@ model Product {
   adjustment_logs StockAdjustmentLog[]
   stock_waitlist  StockWaitlist[]
   return_items    ReturnItem[]
+  primary_bundles       ProductBundle[]       @relation("PrimaryProductBundles")
+  complementary_bundles ProductBundle[]       @relation("ComplementaryBundles")
   created_at      DateTime    @default(now())
   updated_at  DateTime    @updatedAt
 
@@ -104,10 +106,12 @@ model Customer {
   email               String   @unique
   whatsapp_opt_in     Boolean           @default(false)
   whatsapp_phone_e164 String?
+  loyalty_points      Int               @default(0)
   orders              Order[]
   addresses           CustomerAddress[]
   sessions            CustomerSession[]
   return_requests     ReturnRequest[]
+  loyalty_ledger      LoyaltyPointsLedger[]
   created_at          DateTime          @default(now())
   updated_at          DateTime          @updatedAt
 
@@ -399,5 +403,32 @@ model ReturnItem {
   @@index([return_request_id])
   @@index([order_item_id])
   @@index([product_id])
+}
+
+model ProductBundle {
+  id              String   @id @default(cuid())
+  product_id      String
+  product         Product  @relation("PrimaryProductBundles", fields: [product_id], references: [id], onDelete: Cascade)
+  bundle_item_id  String
+  bundle_item     Product  @relation("ComplementaryBundles", fields: [bundle_item_id], references: [id], onDelete: Cascade)
+  created_at      DateTime @default(now())
+
+  @@unique([product_id, bundle_item_id])
+  @@index([product_id])
+  @@index([bundle_item_id])
+}
+
+model LoyaltyPointsLedger {
+  id          String   @id @default(cuid())
+  customer_id String
+  customer    Customer @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  order_id    String?
+  points      Int
+  reason      String
+  created_at  DateTime @default(now())
+
+  @@index([customer_id])
+  @@index([order_id])
+  @@index([created_at])
 }
 
