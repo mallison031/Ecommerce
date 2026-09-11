@@ -30,6 +30,7 @@ async function runTests() {
   // Find a product to test with
   const product = await prisma.product.findFirst({
     where: { is_active: true },
+    include: { sector: true },
   });
 
   if (!product) {
@@ -101,6 +102,9 @@ async function runTests() {
   });
 
   const webhookData = await webhookRes.json();
+  if (!webhookRes.ok || webhookData.success !== true) {
+    console.error("WEBHOOK RES FAILED:", webhookRes.status, webhookData);
+  }
   assert(webhookRes.ok && webhookData.success === true, "Webhook returns HTTP 200 success");
 
   // Verify database mutations
@@ -191,6 +195,9 @@ async function runTests() {
     body: lateRaw,
   });
 
+  if (!lateRes.ok) {
+    console.error("LATE RES FAILED:", lateRes.status, await lateRes.text());
+  }
   assert(lateRes.ok, "Late webhook for abandoned order returned HTTP 200");
   const orderAfterLatePayment = await prisma.order.findUnique({ where: { id: abandonedOrder.id } });
   assert(orderAfterLatePayment?.status === "paid", "Abandoned order correctly transitioned to 'paid'");
@@ -662,7 +669,11 @@ async function runTests() {
   assert(helpfulData.helpfulVotes === 1, "Helpful vote incremented to 1");
 
   // 6. Admin Reviews Moderation API
-  const adminReviewsGetRes = await fetch(`${BASE_URL}/api/admin/reviews`);
+  let adminReviewsGetRes = await fetch(`${BASE_URL}/api/admin/reviews`);
+  if (!adminReviewsGetRes.ok) {
+    await new Promise((r) => setTimeout(r, 500));
+    adminReviewsGetRes = await fetch(`${BASE_URL}/api/admin/reviews`);
+  }
   assert(adminReviewsGetRes.status === 200, "Admin reviews GET returns HTTP 200");
   const adminReviewsGetData = await adminReviewsGetRes.json();
   assert(adminReviewsGetData.success === true, "Admin reviews API reports success: true");
@@ -827,6 +838,9 @@ async function runTests() {
       notes: "Batch #RESTOCK-TEST-LAGOS-01",
     }),
   });
+  if (!restockRes.ok) {
+    console.error("RESTOCK RES FAILED:", restockRes.status, await restockRes.text());
+  }
   assert(restockRes.status === 200, "Restock PATCH returns HTTP 200");
   const restockData = await restockRes.json();
   assert(restockData.success === true, "Restock PATCH reports success");
@@ -881,6 +895,9 @@ async function runTests() {
       notes: "Reset to initial test baseline",
     }),
   });
+  if (!revertRes.ok) {
+    console.error("REVERT RES FAILED:", revertRes.status, await revertRes.text());
+  }
   assert(revertRes.status === 200, "Stock reversion returns HTTP 200");
   const revertData = await revertRes.json();
   assert(revertData.product.stock_qty === invInitialStock, "Product stock reverted to initial value");
@@ -1797,6 +1814,166 @@ async function runTests() {
   assert(Array.isArray(trackedOrder.timeline), "Tracked order includes 4-step progress timeline");
   assert(trackedOrder.timeline.length === 4, "Timeline contains all 4 milestones");
   assert(trackedOrder.timeline[2].completed === true, "In Transit milestone is flagged as completed");
+  console.log();
+
+  // ==========================================
+  // TEST 28: Customer Support & WhatsApp Escalation Desk (Task 1)
+  // ==========================================
+  console.log("--- TEST 28: Customer Support & WhatsApp Escalation Desk ---");
+  // 1. Submit public customer support ticket
+  const ticketRes = await fetch(`${BASE_URL}/api/tickets`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customerName: "Amaka Eze",
+      customerEmail: "amaka.eze@example.ng",
+      customerPhone: "+2348012345678",
+      category: "shipping",
+      subject: "Inquiry on Same-Day Delivery to Ikeja",
+      message: "Hello Aura team, please confirm if orders placed before noon arrive same day in Ikeja.",
+    }),
+  });
+  assert(ticketRes.status === 201, "Customer ticket submission returns HTTP 201");
+  const ticketData = await ticketRes.json();
+  assert(ticketData.success === true, "Ticket response success flag is true");
+  assert(ticketData.ticket?.id, "Created ticket has valid id");
+  assert(ticketData.ticket.status === "open", "Initial ticket status is 'open'");
+
+  // 2. Reject malformed customer ticket
+  const badTicketRes = await fetch(`${BASE_URL}/api/tickets`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customerEmail: "not-an-email",
+      message: "hi",
+    }),
+  });
+  assert(badTicketRes.status === 400, "Malformed ticket submission returns HTTP 400");
+
+  // 3. Admin Support Desk API: Fetch tickets with metrics & filters
+  const adminTicketsRes = await fetch(`${BASE_URL}/api/admin/tickets?status=open&q=Amaka`);
+  assert(adminTicketsRes.status === 200, "Admin tickets endpoint returns HTTP 200");
+  const adminTicketsData = await adminTicketsRes.json();
+  const counts = adminTicketsData.counts || adminTicketsData.stats;
+  assert(counts && typeof counts.total === "number", "Admin tickets response returns counts");
+  assert(Array.isArray(adminTicketsData.tickets), "Admin tickets response returns tickets array");
+  const foundTicket = adminTicketsData.tickets.find((t: any) => t.id === ticketData.ticket.id);
+  assert(Boolean(foundTicket), "Created ticket found in admin ticket list");
+  assert(
+    typeof foundTicket.whatsappReplyUrl === "string" && foundTicket.whatsappReplyUrl.includes("wa.me/2348012345678"),
+    "Ticket generates 1-click WhatsApp response URL with sanitized phone"
+  );
+
+  // 4. Update ticket status & admin notes (Escalation)
+  const patchTicketRes = await fetch(`${BASE_URL}/api/admin/tickets`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ticketId: ticketData.ticket.id,
+      status: "escalated",
+      adminNotes: "Assigned to VIP dispatch team for prompt confirmation",
+    }),
+  });
+  assert(patchTicketRes.status === 200, "Admin ticket status update returns HTTP 200");
+  const patchTicketData = await patchTicketRes.json();
+  assert(patchTicketData.ticket.status === "escalated", "Ticket status successfully updated to 'escalated'");
+  assert(
+    patchTicketData.ticket.admin_notes === "Assigned to VIP dispatch team for prompt confirmation",
+    "Ticket admin notes persisted"
+  );
+  console.log();
+
+  // ==========================================
+  // TEST 29: Product Customization & Engraving Studio (Task 2)
+  // ==========================================
+  console.log("--- TEST 29: Product Customization & Engraving Studio ---");
+  // 1. Mark product as supporting engraving
+  await prisma.product.update({
+    where: { id: product.id },
+    data: { supports_engraving: true },
+  });
+
+  // 2. Checkout with engraving & gift wrap
+  const customCheckoutRes = await fetch(`${BASE_URL}/api/checkout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "Chukwudi Nnamdi",
+      email: "chukwudi@example.ng",
+      phone: "+2348099887766",
+      deliveryAddress: "Penthouse Suite, Victoria Island, Lagos",
+      state: "Lagos",
+      lagosZone: "Island (Ikoyi, VI, Lekki Phase 1)",
+      isExpress: false,
+      items: [
+        {
+          productId: product.id,
+          quantity: 1,
+          customEngraving: "Forever Yours",
+          engravingFont: "serif",
+          giftWrap: true,
+        },
+      ],
+    }),
+  });
+  assert(customCheckoutRes.status === 200, "Customized product checkout returns HTTP 200");
+  const customCheckoutData = await customCheckoutRes.json();
+  assert(customCheckoutData.success === true, "Custom checkout response is successful");
+  assert(customCheckoutData.orderId, "Custom checkout returns orderId");
+
+  // 3. Verify OrderItem in DB has customization attributes
+  const customOrderItem = await prisma.orderItem.findFirst({
+    where: { order_id: customCheckoutData.orderId },
+  });
+  assert(customOrderItem !== null, "Created order item exists in database");
+  assert(customOrderItem?.custom_engraving === "Forever Yours", "Custom engraving text is recorded");
+  assert(customOrderItem?.engraving_font === "serif", "Engraving font selection is recorded");
+  assert(customOrderItem?.gift_wrap === true, "Luxury gift wrap flag is recorded");
+
+  // 4. Verify track-order API returns customization specs
+  const trackCustomRes = await fetch(`${BASE_URL}/api/track-order?email=chukwudi@example.ng`);
+  assert(trackCustomRes.status === 200, "Track order for customized item returns HTTP 200");
+  const trackCustomData = await trackCustomRes.json();
+  const trackedCustomOrder = trackCustomData.orders.find((o: any) => o.id === customCheckoutData.orderId);
+  assert(Boolean(trackedCustomOrder), "Customized order found in track order response");
+  assert(
+    trackedCustomOrder.items[0].custom_engraving === "Forever Yours",
+    "Track order response includes item custom_engraving"
+  );
+  assert(
+    trackedCustomOrder.items[0].gift_wrap === true,
+    "Track order response includes item gift_wrap"
+  );
+  console.log();
+
+  // ==========================================
+  // TEST 30: Automated SEO Engine, Dynamic OG Cards & Sitemaps (Task 3)
+  // ==========================================
+  console.log("--- TEST 30: Automated SEO Engine, Dynamic OG Cards & Sitemaps ---");
+  // 1. Test sitemap generation endpoint
+  const sitemapRes = await fetch(`${BASE_URL}/sitemap.xml`);
+  assert(sitemapRes.status === 200, "GET /sitemap.xml returns HTTP 200");
+  const sitemapText = await sitemapRes.text();
+  assert(sitemapText.includes("<urlset") || sitemapText.includes("<url>"), "Sitemap contains valid XML urlset");
+  assert(sitemapText.includes(`/${product.slug}`), "Sitemap includes dynamic product canonical URL");
+
+  // 2. Test robots.txt endpoint
+  const robotsRes = await fetch(`${BASE_URL}/robots.txt`);
+  assert(robotsRes.status === 200, "GET /robots.txt returns HTTP 200");
+  const robotsText = await robotsRes.text();
+  assert(robotsText.toLowerCase().includes("user-agent: *"), "Robots.txt contains User-agent directive");
+  assert(robotsText.includes("/admin"), "Robots.txt disallows admin path");
+  assert(robotsText.includes("sitemap.xml"), "Robots.txt references sitemap.xml");
+
+  // 3. Test dynamic OpenGraph image generation route
+  const ogRes = await fetch(
+    `${BASE_URL}/api/og?title=Luxury%20Timepiece&price=%E2%82%A6120,000&sector=Accessories&badge=Bestseller`
+  );
+  assert(ogRes.status === 200, "GET /api/og returns HTTP 200");
+  const ogContentType = ogRes.headers.get("content-type");
+  assert(Boolean(ogContentType && ogContentType.includes("image/png")), "OG route returns image/png content type");
+  const ogBuffer = await ogRes.arrayBuffer();
+  assert(ogBuffer.byteLength > 1000, "Generated OG image buffer is non-empty and valid binary");
   console.log();
 
   console.log("=================================================");

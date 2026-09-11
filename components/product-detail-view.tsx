@@ -21,6 +21,9 @@ import {
   AlertCircle,
   X,
   Loader2,
+  Gift,
+  Edit3,
+  CheckCircle2,
 } from "lucide-react";
 import { NIGERIAN_STATES, calculateShippingFee } from "@/lib/shipping";
 
@@ -71,6 +74,17 @@ export function ProductDetailView({ product, sector, ratingSummary }: ProductDet
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
   const [estimateState, setEstimateState] = useState<string>("Lagos");
+
+  // Personalization & Engraving State
+  const [customEngravingEnabled, setCustomEngravingEnabled] = useState(false);
+  const [customEngravingText, setCustomEngravingText] = useState("");
+  const [engravingFont, setEngravingFont] = useState<"script" | "serif" | "sans">("script");
+  const [giftWrap, setGiftWrap] = useState(false);
+
+  const supportsCustomization =
+    sector.slug === "jewelry-accessories" ||
+    sector.slug === "kitchen-souvenirs" ||
+    Boolean((product as any).supports_engraving);
 
   // Restock Waitlist State
   const [showWaitlistModal, setShowWaitlistModal] = useState(false);
@@ -130,6 +144,15 @@ export function ProductDetailView({ product, sector, ratingSummary }: ProductDet
         slug: product.slug,
         priceKobo: product.price_kobo,
         imageUrl: product.image_urls[0],
+        customEngraving:
+          customEngravingEnabled && customEngravingText.trim()
+            ? customEngravingText.trim()
+            : undefined,
+        engravingFont:
+          customEngravingEnabled && customEngravingText.trim()
+            ? engravingFont
+            : undefined,
+        giftWrap: giftWrap,
       },
       quantity
     );
@@ -146,6 +169,15 @@ export function ProductDetailView({ product, sector, ratingSummary }: ProductDet
         slug: product.slug,
         priceKobo: product.price_kobo,
         imageUrl: product.image_urls[0],
+        customEngraving:
+          customEngravingEnabled && customEngravingText.trim()
+            ? customEngravingText.trim()
+            : undefined,
+        engravingFont:
+          customEngravingEnabled && customEngravingText.trim()
+            ? engravingFont
+            : undefined,
+        giftWrap: giftWrap,
       },
       quantity
     );
@@ -264,6 +296,110 @@ export function ProductDetailView({ product, sector, ratingSummary }: ProductDet
 
         {/* Actions Box */}
         <div className="space-y-4 pt-4 border-t border-slate-200">
+          {/* Personalization & Custom Engraving Studio */}
+          {supportsCustomization && !isOutOfStock && (
+            <div className="p-4 rounded-xl bg-gradient-to-br from-amber-50/70 to-pink-50/70 border border-amber-200/70 space-y-3.5 shadow-xs">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={customEngravingEnabled}
+                    onChange={(e) => setCustomEngravingEnabled(e.target.checked)}
+                    className="rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                  />
+                  <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                    Personalize with Custom Engraving / Name Tag
+                  </span>
+                </label>
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  Free
+                </span>
+              </div>
+
+              {customEngravingEnabled && (
+                <div className="space-y-3 pt-1 animate-in fade-in duration-200">
+                  <div>
+                    <div className="flex justify-between items-center text-[11px] text-slate-500 mb-1">
+                      <span className="font-semibold text-slate-700">Enter Engraving Text:</span>
+                      <span>{customEngravingText.length}/30 characters</span>
+                    </div>
+                    <input
+                      type="text"
+                      maxLength={30}
+                      value={customEngravingText}
+                      onChange={(e) => setCustomEngravingText(e.target.value)}
+                      placeholder="e.g. Amaka & Tunde 2026 or Always in My Heart"
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-amber-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-900"
+                    />
+                  </div>
+
+                  {/* Font Style Selector */}
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-[11px] font-semibold text-slate-600">Font Style:</span>
+                    {(["script", "serif", "sans"] as const).map((font) => (
+                      <button
+                        key={font}
+                        type="button"
+                        onClick={() => setEngravingFont(font)}
+                        className={`px-2.5 py-1 rounded text-xs capitalize transition-all cursor-pointer ${
+                          engravingFont === font
+                            ? "bg-slate-900 text-white font-bold shadow-xs"
+                            : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+                        } ${
+                          font === "script"
+                            ? "italic font-serif"
+                            : font === "serif"
+                            ? "font-serif"
+                            : "font-sans"
+                        }`}
+                      >
+                        {font}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Live Visual Engraving Plaque Preview */}
+                  {customEngravingText.trim() && (
+                    <div className="p-3 bg-gradient-to-r from-amber-100/80 via-yellow-50 to-amber-100/80 rounded-lg border border-amber-300/80 text-center shadow-inner">
+                      <div className="text-[10px] uppercase tracking-widest text-amber-800 font-semibold mb-1">
+                        ✨ Live Engraving Preview
+                      </div>
+                      <div
+                        className={`text-slate-950 font-bold tracking-wide select-none ${
+                          engravingFont === "script"
+                            ? "italic font-serif tracking-widest text-base text-amber-950"
+                            : engravingFont === "serif"
+                            ? "font-serif text-sm text-slate-900"
+                            : "font-sans uppercase text-xs tracking-wider text-slate-900"
+                        }`}
+                      >
+                        "{customEngravingText.trim()}"
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Luxury Velvet Gift Box Addon */}
+              <div className="pt-2 border-t border-amber-200/50 flex items-center justify-between">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={giftWrap}
+                    onChange={(e) => setGiftWrap(e.target.checked)}
+                    className="rounded border-amber-300 text-pink-600 focus:ring-pink-500"
+                  />
+                  <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                    <Gift className="w-3.5 h-3.5 text-pink-600" />
+                    Luxury Velvet Gift Box & Ribbon Wrapping
+                  </span>
+                </label>
+                <span className="text-xs font-bold text-slate-900">+₦1,500</span>
+              </div>
+            </div>
+          )}
+
           {/* Quantity Selector */}
           {!isOutOfStock && (
             <div className="flex items-center gap-4">

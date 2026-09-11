@@ -43,6 +43,9 @@ interface TrackedOrder {
     quantity: number;
     unit_price_kobo: number;
     line_total_kobo: number;
+    custom_engraving?: string | null;
+    engraving_font?: string | null;
+    gift_wrap?: boolean;
   }>;
   invoice_number: number | null;
   receipt_number: number | null;
@@ -337,10 +340,22 @@ function TrackOrderContent() {
                     <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2">Purchased Items</h3>
                     <div className="divide-y divide-slate-100 text-xs">
                       {order.items.map((item) => (
-                        <div key={item.id} className="py-1.5 flex justify-between">
-                          <span className="text-slate-700 truncate pr-2">
-                            {item.quantity}x {item.name}
-                          </span>
+                        <div key={item.id} className="py-2 flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <span className="text-slate-700 block truncate font-medium">
+                              {item.quantity}x {item.name}
+                            </span>
+                            {item.custom_engraving && (
+                              <span className="block text-[11px] text-indigo-600 font-mono mt-0.5">
+                                ✨ Engraved: &quot;{item.custom_engraving}&quot; ({item.engraving_font || "script"})
+                              </span>
+                            )}
+                            {item.gift_wrap && (
+                              <span className="inline-block text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded font-medium mt-0.5">
+                                🎁 Velvet Gift Box
+                              </span>
+                            )}
+                          </div>
                           <span className="font-medium text-slate-900 shrink-0">
                             {formatKoboToNaira(item.line_total_kobo)}
                           </span>
