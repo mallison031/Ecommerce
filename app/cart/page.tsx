@@ -2,9 +2,8 @@
 
 import { useCart } from "@/context/cart-context";
 import { formatKoboToNaira } from "@/lib/utils";
-import { FREE_SHIPPING_THRESHOLD_KOBO } from "@/lib/shipping";
 import Link from "next/link";
-import { Trash2, Plus, Minus, ArrowRight, ShoppingBag, MessageCircle, Truck } from "lucide-react";
+import { Trash2, Plus, Minus, ArrowRight, ShoppingBag, MessageCircle } from "lucide-react";
 
 export default function CartPage() {
   const { items, removeItem, updateQuantity, subtotalKobo, clearCart } = useCart();
@@ -31,10 +30,6 @@ export default function CartPage() {
     );
   }
 
-  const isFree = subtotalKobo >= FREE_SHIPPING_THRESHOLD_KOBO;
-  const needed = Math.max(0, FREE_SHIPPING_THRESHOLD_KOBO - subtotalKobo);
-  const percent = Math.min(100, Math.round((subtotalKobo / FREE_SHIPPING_THRESHOLD_KOBO) * 100));
-
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12">
       <div className="flex items-center justify-between border-b border-slate-200 pb-4 mb-6">
@@ -48,31 +43,6 @@ export default function CartPage() {
         >
           Clear Cart
         </button>
-      </div>
-
-      {/* Free Delivery Progress Banner */}
-      <div className="mb-8 p-4 rounded-2xl bg-white border border-slate-200 shadow-xs">
-        <div className="flex items-center justify-between text-xs font-semibold mb-2">
-          <div className="flex items-center gap-1.5">
-            <Truck className="w-4 h-4 text-emerald-600" />
-            {isFree ? (
-              <span className="text-emerald-700">🎉 Congratulations! Your order qualifies for Free Nationwide Delivery!</span>
-            ) : (
-              <span className="text-slate-800">
-                Add <strong className="text-slate-900">{formatKoboToNaira(needed)}</strong> more to unlock Free Delivery!
-              </span>
-            )}
-          </div>
-          <span className="text-slate-500">{percent}%</span>
-        </div>
-        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-          <div
-            className={`h-full transition-all duration-300 rounded-full ${
-              isFree ? "bg-emerald-500" : "bg-slate-900"
-            }`}
-            style={{ width: `${percent}%` }}
-          />
-        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -140,11 +110,7 @@ export default function CartPage() {
             </div>
             <div className="flex justify-between text-slate-600">
               <span>Shipping</span>
-              {isFree ? (
-                <span className="text-xs text-emerald-600 font-bold uppercase">Free Nationwide</span>
-              ) : (
-                <span className="text-xs text-slate-500">Calculated at checkout</span>
-              )}
+              <span className="text-xs text-slate-500">Calculated at checkout</span>
             </div>
           </div>
 
