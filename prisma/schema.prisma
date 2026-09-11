@@ -94,6 +94,8 @@ model Product {
   return_items    ReturnItem[]
   primary_bundles       ProductBundle[]       @relation("PrimaryProductBundles")
   complementary_bundles ProductBundle[]       @relation("ComplementaryBundles")
+  flash_sale_products   FlashSaleProduct[]
+  questions             ProductQuestion[]
   created_at      DateTime    @default(now())
   updated_at  DateTime    @updatedAt
 
@@ -148,6 +150,7 @@ model Order {
   created_at       DateTime          @default(now())
   updated_at       DateTime          @updatedAt
 
+  gift_card_discount_kobo Int      @default(0)
   items            OrderItem[]
   payment          Payment?
   invoice          Invoice?
@@ -156,6 +159,7 @@ model Order {
   notifications    MessageNotificationLog[]
   support_tickets  SupportTicket[]
   return_requests  ReturnRequest[]
+  gift_card_redemptions GiftCardRedemption[]
 
   @@index([customer_id])
   @@index([status])
@@ -475,6 +479,99 @@ model AdminNotification {
   @@index([is_read])
   @@index([created_at])
   @@index([type])
+}
+
+model FlashSale {
+  id                  String             @id @default(cuid())
+  title               String
+  description         String?
+  discount_percentage Int                // e.g. 25 for 25% OFF
+  banner_text         String?            // e.g. "⚡ Flash Sale: 25% OFF on Premium Collections!"
+  start_time          DateTime
+  end_time            DateTime
+  is_active           Boolean            @default(true)
+  created_at          DateTime           @default(now())
+  updated_at          DateTime           @updatedAt
+  products            FlashSaleProduct[]
+
+  @@index([is_active])
+  @@index([start_time, end_time])
+}
+
+model FlashSaleProduct {
+  id            String    @id @default(cuid())
+  flash_sale_id String
+  flash_sale    FlashSale @relation(fields: [flash_sale_id], references: [id], onDelete: Cascade)
+  product_id    String
+  product       Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  created_at    DateTime  @default(now())
+
+  @@unique([flash_sale_id, product_id])
+  @@index([flash_sale_id])
+  @@index([product_id])
+}
+
+model GiftCard {
+  id                 String               @id @default(cuid())
+  code               String               @unique
+  initial_value_kobo Int
+  balance_kobo       Int
+  currency           String               @default("NGN")
+  recipient_name     String?
+  recipient_email    String?
+  sender_name        String?
+  message            String?
+  is_active          Boolean              @default(true)
+  expires_at         DateTime?
+  created_at         DateTime             @default(now())
+  updated_at         DateTime             @updatedAt
+  redemptions        GiftCardRedemption[]
+
+  @@index([code])
+  @@index([is_active])
+}
+
+model GiftCardRedemption {
+  id           String   @id @default(cuid())
+  gift_card_id String
+  gift_card    GiftCard @relation(fields: [gift_card_id], references: [id], onDelete: Cascade)
+  order_id     String
+  order        Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  amount_kobo  Int
+  redeemed_at  DateTime @default(now())
+
+  @@index([gift_card_id])
+  @@index([order_id])
+}
+
+model ProductQuestion {
+  id             String          @id @default(cuid())
+  product_id     String
+  product        Product         @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  customer_name  String
+  customer_email String?
+  question       String
+  is_approved    Boolean         @default(true)
+  created_at     DateTime        @default(now())
+  updated_at     DateTime        @updatedAt
+  answers        ProductAnswer[]
+
+  @@index([product_id])
+  @@index([is_approved])
+}
+
+model ProductAnswer {
+  id            String          @id @default(cuid())
+  question_id   String
+  question      ProductQuestion @relation(fields: [question_id], references: [id], onDelete: Cascade)
+  answered_by   String
+  answer        String
+  is_official   Boolean         @default(true)
+  helpful_count Int             @default(0)
+  created_at    DateTime        @default(now())
+  updated_at    DateTime        @updatedAt
+
+  @@index([question_id])
 }
 
 

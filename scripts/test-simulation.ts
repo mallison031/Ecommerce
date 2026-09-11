@@ -1976,6 +1976,207 @@ async function runTests() {
   assert(ogBuffer.byteLength > 1000, "Generated OG image buffer is non-empty and valid binary");
   console.log();
 
+  // ==========================================
+  // TEST 31: Flash Sales Engine & Countdowns (Milestone 20 - Module 1)
+  // ==========================================
+  console.log("--- TEST 31: Flash Sales Engine & Timed Promotion Countdowns ---");
+  // 1. Create a Flash Sale via Admin API
+  const saleStart = new Date(Date.now() - 60000).toISOString();
+  const saleEnd = new Date(Date.now() + 86400000 * 2).toISOString();
+  const createSaleRes = await fetch(`${BASE_URL}/api/admin/flash-sales`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: "Weekend Flash Blitz",
+      description: "25% discount across curated essentials",
+      discount_percentage: 25,
+      banner_text: "⚡ 25% OFF Weekend Flash Deal!",
+      start_time: saleStart,
+      end_time: saleEnd,
+      product_ids: [product.id],
+    }),
+  });
+  assert(createSaleRes.status === 201, "Admin create flash sale returns HTTP 201");
+  const createSaleData = await createSaleRes.json();
+  assert(createSaleData.success === true, "Flash sale created successfully");
+  const createdSaleId = createSaleData.flash_sale.id;
+
+  // 2. Public Flash Sales API verification
+  const publicSalesRes = await fetch(`${BASE_URL}/api/flash-sales`);
+  assert(publicSalesRes.status === 200, "GET /api/flash-sales returns HTTP 200");
+  const publicSalesData = await publicSalesRes.json();
+  assert(publicSalesData.success === true, "Public flash sales query succeeded");
+  assert(publicSalesData.active_sale !== null, "Active flash sale found in public endpoint");
+  assert(publicSalesData.active_sale.discount_percentage === 25, "Active flash sale has 25% discount");
+  assert(publicSalesData.active_sale.remaining_seconds > 0, "Active flash sale has positive remaining seconds");
+  const saleProduct = publicSalesData.active_sale.products.find((p: any) => p.id === product.id);
+  assert(Boolean(saleProduct), "Product is included in active flash sale response");
+  const expectedPromoPrice = Math.round(product.price_kobo * 0.75);
+  assert(saleProduct.promo_price_kobo === expectedPromoPrice, "Promo price matches 25% discount calculation");
+
+  // 3. Checkout automatically applies active flash sale price
+  const flashCheckoutRes = await fetch(`${BASE_URL}/api/checkout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "Tunde Bakare",
+      email: "tunde@example.com",
+      phone: "+2348033221144",
+      deliveryAddress: "Marina, Lagos Island",
+      state: "Lagos",
+      lagosZone: "Island (Ikoyi, VI, Lekki Phase 1)",
+      items: [{ productId: product.id, quantity: 1, giftWrap: false }],
+    }),
+  });
+  assert(flashCheckoutRes.status === 200, "Checkout with flash sale item returns HTTP 200");
+  const flashCheckoutData = await flashCheckoutRes.json();
+  assert(flashCheckoutData.subtotalKobo === expectedPromoPrice, "Subtotal reflects flash sale discounted price");
+
+  // 4. Admin updates / pauses flash sale
+  const pauseSaleRes = await fetch(`${BASE_URL}/api/admin/flash-sales`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: createdSaleId, is_active: false }),
+  });
+  assert(pauseSaleRes.status === 200, "Admin pause flash sale returns HTTP 200");
+  console.log();
+
+  // ==========================================
+  // TEST 32: Digital Gift Cards & Store Credit Wallet (Milestone 20 - Module 2)
+  // ==========================================
+  console.log("--- TEST 32: Digital Gift Cards & Store Credit Wallet ---");
+  // 1. Issue / Purchase a Digital Gift Card
+  const purchaseGcRes = await fetch(`${BASE_URL}/api/gift-cards/purchase`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      amount_kobo: 2500000, // ₦25,000
+      recipient_name: "Amina Yusuf",
+      recipient_email: "amina@example.com",
+      sender_name: "Farouk",
+      message: "Happy Birthday Amina! Enjoy shopping at Aura.",
+      expires_in_days: 90,
+    }),
+  });
+  assert(purchaseGcRes.status === 201, "POST /api/gift-cards/purchase returns HTTP 201");
+  const purchaseGcData = await purchaseGcRes.json();
+  assert(purchaseGcData.success === true, "Gift card purchased successfully");
+  assert(typeof purchaseGcData.gift_card.code === "string", "Gift card has unique voucher code");
+  assert(purchaseGcData.gift_card.balance_kobo === 2500000, "Gift card initial balance is ₦25,000");
+  const gcCode = purchaseGcData.gift_card.code;
+
+  // 2. Validate Gift Card code
+  const validateGcRes = await fetch(`${BASE_URL}/api/gift-cards/validate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: gcCode, total_kobo: 1000000 }), // ₦10,000 order
+  });
+  assert(validateGcRes.status === 200, "POST /api/gift-cards/validate returns HTTP 200");
+  const validateGcData = await validateGcRes.json();
+  assert(validateGcData.valid === true, "Gift card validation returns valid: true");
+  assert(validateGcData.balance_kobo === 2500000, "Balance is ₦25,000");
+  assert(validateGcData.deduction_kobo === 1000000, "Deduction equals order total when balance exceeds total");
+
+  // 3. Checkout using Gift Card (Split or Full payment)
+  const gcCheckoutRes = await fetch(`${BASE_URL}/api/checkout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "Amina Yusuf",
+      email: "amina@example.com",
+      phone: "+2348055443322",
+      deliveryAddress: "Garki 2, Abuja",
+      state: "Abuja (FCT)",
+      giftCardCode: gcCode,
+      items: [{ productId: product.id, quantity: 1 }],
+    }),
+  });
+  assert(gcCheckoutRes.status === 200, "Checkout with Gift Card returns HTTP 200");
+  const gcCheckoutData = await gcCheckoutRes.json();
+  assert(gcCheckoutData.success === true, "Gift card checkout succeeds");
+  assert(gcCheckoutData.giftCardCode === gcCode, "Returned order includes applied gift card code");
+  assert(gcCheckoutData.giftCardDeductionKobo > 0, "Gift card deduction recorded in checkout response");
+
+  // 4. Verify Gift Card balance decremented in DB
+  const updatedGc = await prisma.giftCard.findUnique({ where: { code: gcCode } });
+  assert(updatedGc !== null, "Gift card exists in DB");
+  assert(updatedGc!.balance_kobo < 2500000, "Gift card balance successfully decremented after checkout");
+
+  // 5. Verify GiftCardRedemption record
+  const redemption = await prisma.giftCardRedemption.findFirst({
+    where: { gift_card_id: updatedGc!.id },
+  });
+  assert(redemption !== null, "GiftCardRedemption record persisted");
+  assert(redemption!.amount_kobo > 0, "Redemption amount is recorded");
+
+  // 6. Admin Gift Cards API metrics
+  const adminGcRes = await fetch(`${BASE_URL}/api/admin/gift-cards`);
+  assert(adminGcRes.status === 200, "GET /api/admin/gift-cards returns HTTP 200");
+  const adminGcData = await adminGcRes.json();
+  assert(adminGcData.stats.total_cards >= 1, "Admin stats reflect issued gift cards");
+  assert(adminGcData.stats.total_redeemed_kobo > 0, "Admin stats reflect redeemed amount");
+  console.log();
+
+  // ==========================================
+  // TEST 33: Product Community Q&A & Answer Desk (Milestone 20 - Module 3)
+  // ==========================================
+  console.log("--- TEST 33: Product Community Q&A & Answer Desk ---");
+  // 1. Submit a Customer Question
+  const askRes = await fetch(`${BASE_URL}/api/products/${product.id}/questions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customer_name: "Ngozi Obi",
+      customer_email: "ngozi@example.com",
+      question: "Is this item covered by a 1-year warranty and does it tarnish?",
+    }),
+  });
+  assert(askRes.status === 201, "POST /api/products/[id]/questions returns HTTP 201");
+  const askData = await askRes.json();
+  assert(askData.success === true, "Question submitted successfully");
+  const createdQuestionId = askData.question.id;
+
+  // 2. Fetch approved questions on PDP
+  const getQuestionsRes = await fetch(`${BASE_URL}/api/products/${product.id}/questions`);
+  assert(getQuestionsRes.status === 200, "GET /api/products/[id]/questions returns HTTP 200");
+  const getQuestionsData = await getQuestionsRes.json();
+  assert(Array.isArray(getQuestionsData.questions), "Questions response contains array");
+  const foundQ = getQuestionsData.questions.find((q: any) => q.id === createdQuestionId);
+  assert(Boolean(foundQ), "Submitted question found in PDP questions list");
+
+  // 3. Admin Answers the Question
+  const answerRes = await fetch(`${BASE_URL}/api/admin/questions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question_id: createdQuestionId,
+      answer: "Yes! It is crafted from 18k PVD gold-plated stainless steel which does not tarnish and includes a 1-year warranty.",
+      answered_by: "Aura Store Concierge",
+    }),
+  });
+  assert(answerRes.status === 201, "POST /api/admin/questions returns HTTP 201");
+  const answerData = await answerRes.json();
+  assert(answerData.success === true, "Admin answer posted successfully");
+  const createdAnswerId = answerData.answer.id;
+
+  // 4. Upvote helpful answer
+  const upvoteRes = await fetch(
+    `${BASE_URL}/api/products/${product.id}/questions/${createdQuestionId}/answers/${createdAnswerId}/helpful`,
+    { method: "POST" }
+  );
+  assert(upvoteRes.status === 200, "POST answer helpful vote returns HTTP 200");
+  const upvoteData = await upvoteRes.json();
+  assert(upvoteData.helpful_count === 1, "Helpful count incremented to 1");
+
+  // 5. Verify PDP returns answered question with official badge and helpful count
+  const verifyQnaRes = await fetch(`${BASE_URL}/api/products/${product.id}/questions`);
+  const verifyQnaData = await verifyQnaRes.json();
+  const verifiedQ = verifyQnaData.questions.find((q: any) => q.id === createdQuestionId);
+  assert(verifiedQ.answers.length === 1, "Question now has 1 answer");
+  assert(verifiedQ.answers[0].is_official === true, "Answer has is_official: true");
+  assert(verifiedQ.answers[0].helpful_count === 1, "Answer has helpful_count: 1");
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");

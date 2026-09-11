@@ -9,6 +9,7 @@ import { HeaderWishlistButton } from "@/components/header-wishlist-button";
 import { HeaderSearchBar } from "@/components/header-search-bar";
 import { HeaderAccountButton } from "@/components/header-account-button";
 import { SupportContactModal } from "@/components/support-contact-modal";
+import { FlashSaleBanner } from "@/components/flash-sale-banner";
 
 export const metadata: Metadata = {
   title: "Aura Essentials | Curated Multi-Sector Storefront",
@@ -26,6 +27,9 @@ export default function RootLayout({
       <body className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
         <CartProvider>
           <WishlistProvider>
+            {/* Real-time Flash Sale Countdown Ticker */}
+            <FlashSaleBanner />
+
             {/* Top Announcement Bar */}
             <div className="bg-slate-900 text-white text-xs font-medium py-2 text-center px-4">
               🚀 Fast delivery across Lagos & nationwide | Instant checkout via Paystack
