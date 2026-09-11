@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { formatKoboToNaira } from "@/lib/utils";
 import { useCart } from "@/context/cart-context";
 import { useWishlist } from "@/context/wishlist-context";
@@ -24,8 +24,10 @@ import {
   Gift,
   Edit3,
   CheckCircle2,
+  Clock,
 } from "lucide-react";
 import { NIGERIAN_STATES, calculateShippingFee } from "@/lib/shipping";
+import { ProductQnA } from "@/components/product-qna";
 
 interface ProductDetailViewProps {
   product: {
@@ -80,6 +82,50 @@ export function ProductDetailView({ product, sector, ratingSummary }: ProductDet
   const [customEngravingText, setCustomEngravingText] = useState("");
   const [engravingFont, setEngravingFont] = useState<"script" | "serif" | "sans">("script");
   const [giftWrap, setGiftWrap] = useState(false);
+
+  // Flash Sale State & Countdown
+  const [flashSale, setFlashSale] = useState<{
+    discount_percentage: number;
+    promo_price_kobo: number;
+    remaining_seconds: number;
+    banner_text: string;
+  } | null>(null);
+
+  useEffect(() => {
+    async function checkFlashSale() {
+      try {
+        const res = await fetch("/api/flash-sales");
+        const data = await res.json();
+        if (data.success && data.active_sale) {
+          const match = data.active_sale.products.find((p: any) => p.id === product.id);
+          if (match) {
+            setFlashSale({
+              discount_percentage: data.active_sale.discount_percentage,
+              promo_price_kobo: match.promo_price_kobo,
+              remaining_seconds: data.active_sale.remaining_seconds,
+              banner_text: data.active_sale.banner_text,
+            });
+          }
+        }
+      } catch (e) {
+        // Fallback
+      }
+    }
+    checkFlashSale();
+  }, [product.id]);
+
+  useEffect(() => {
+    if (!flashSale || flashSale.remaining_seconds <= 0) return;
+    const t = setInterval(() => {
+      setFlashSale((prev) => {
+        if (!prev || prev.remaining_seconds <= 1) return null;
+        return { ...prev, remaining_seconds: prev.remaining_seconds - 1 };
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [flashSale]);
+
+  const effectivePriceKobo = flashSale ? flashSale.promo_price_kobo : product.price_kobo;
 
   const supportsCustomization =
     sector.slug === "jewelry-accessories" ||
@@ -142,7 +188,7 @@ export function ProductDetailView({ product, sector, ratingSummary }: ProductDet
         productId: product.id,
         name: product.name,
         slug: product.slug,
-        priceKobo: product.price_kobo,
+        priceKobo: effectivePriceKobo,
         imageUrl: product.image_urls[0],
         customEngraving:
           customEngravingEnabled && customEngravingText.trim()
@@ -167,7 +213,7 @@ export function ProductDetailView({ product, sector, ratingSummary }: ProductDet
         productId: product.id,
         name: product.name,
         slug: product.slug,
-        priceKobo: product.price_kobo,
+        priceKobo: effectivePriceKobo,
         imageUrl: product.image_urls[0],
         customEngraving:
           customEngravingEnabled && customEngravingText.trim()
@@ -269,23 +315,48 @@ export function ProductDetailView({ product, sector, ratingSummary }: ProductDet
             </a>
           )}
 
-          <div className="flex items-center gap-4">
-            <span className="text-2xl sm:text-3xl font-bold text-slate-900">
-              {formatKoboToNaira(product.price_kobo)}
-            </span>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex flex-wrap items-center gap-3">
+              {flashSale ? (
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl sm:text-3xl font-extrabold text-rose-600">
+                    {formatKoboToNaira(flashSale.promo_price_kobo)}
+                  </span>
+                  <span className="text-sm font-semibold text-slate-400 line-through">
+                    {formatKoboToNaira(product.price_kobo)}
+                  </span>
+                  <span className="bg-rose-100 text-rose-700 font-extrabold text-xs px-2 py-0.5 rounded uppercase">
+                    {flashSale.discount_percentage}% OFF Flash Deal
+                  </span>
+                </div>
+              ) : (
+                <span className="text-2xl sm:text-3xl font-bold text-slate-900">
+                  {formatKoboToNaira(product.price_kobo)}
+                </span>
+              )}
 
-            {isOutOfStock ? (
-              <span className="text-xs font-bold text-rose-700 bg-rose-50 px-3 py-1 rounded-full border border-rose-200 uppercase tracking-wider">
-                Out of Stock
-              </span>
-            ) : product.stock_qty <= 5 ? (
-              <span className="text-xs font-bold text-amber-800 bg-amber-50 px-3 py-1 rounded-full border border-amber-200 flex items-center gap-1.5 animate-pulse">
-                <AlertCircle className="w-3.5 h-3.5 text-amber-600" /> Only {product.stock_qty} left in stock!
-              </span>
-            ) : (
-              <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                In Stock ({product.stock_qty} available)
-              </span>
+              {isOutOfStock ? (
+                <span className="text-xs font-bold text-rose-700 bg-rose-50 px-3 py-1 rounded-full border border-rose-200 uppercase tracking-wider">
+                  Out of Stock
+                </span>
+              ) : product.stock_qty <= 5 ? (
+                <span className="text-xs font-bold text-amber-800 bg-amber-50 px-3 py-1 rounded-full border border-amber-200 flex items-center gap-1.5 animate-pulse">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600" /> Only {product.stock_qty} left in stock!
+                </span>
+              ) : (
+                <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                  In Stock ({product.stock_qty} available)
+                </span>
+              )}
+            </div>
+
+            {flashSale && flashSale.remaining_seconds > 0 && (
+              <div className="flex items-center gap-1.5 text-xs text-rose-600 font-mono font-medium">
+                <Clock className="w-3.5 h-3.5 animate-pulse shrink-0" />
+                <span>
+                  Flash Deal ends in {Math.floor(flashSale.remaining_seconds / 3600)}h {Math.floor((flashSale.remaining_seconds % 3600) / 60)}m {flashSale.remaining_seconds % 60}s
+                </span>
+              </div>
             )}
           </div>
 
@@ -673,6 +744,9 @@ export function ProductDetailView({ product, sector, ratingSummary }: ProductDet
           </div>
         </div>
       )}
+
+      {/* Community Q&A & Product Inquiries Section */}
+      <ProductQnA productId={product.id} productName={product.name} />
     </div>
   );
 }

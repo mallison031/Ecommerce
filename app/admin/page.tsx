@@ -41,9 +41,14 @@ import {
   History,
   Sliders,
   RefreshCcw,
+  Gift,
+  HelpCircle,
 } from "lucide-react";
 import AdminReturnsTab from "@/components/admin/admin-returns-tab";
 import AdminSupportDeskTab from "@/components/admin/admin-support-desk-tab";
+import { AdminFlashSalesTab } from "@/components/admin/admin-flash-sales-tab";
+import { AdminGiftCardsTab } from "@/components/admin/admin-gift-cards-tab";
+import { AdminQnATab } from "@/components/admin/admin-qna-tab";
 import AdminLiveFeedBanner from "@/components/admin/admin-live-feed-banner";
 import DailySettlementModal from "@/components/admin/daily-settlement-modal";
 import { AdminNotificationCenter } from "@/components/admin-notification-center";
@@ -138,7 +143,18 @@ interface AbandonedOrder {
 
 export default function AdminDashboardPage() {
   const [activeTab, setActiveTab] = useState<
-    "orders" | "sales" | "inventory" | "notifications" | "tickets" | "abandoned" | "promotions" | "reviews" | "returns"
+    | "orders"
+    | "sales"
+    | "inventory"
+    | "notifications"
+    | "tickets"
+    | "abandoned"
+    | "promotions"
+    | "reviews"
+    | "returns"
+    | "flash-sales"
+    | "gift-cards"
+    | "qna"
   >("orders");
   const [orders, setOrders] = useState<Order[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
@@ -1060,6 +1076,36 @@ export default function AdminDashboardPage() {
           }`}
         >
           <RefreshCcw className="w-4 h-4 text-purple-600" /> Returns (RMA)
+        </button>
+        <button
+          onClick={() => setActiveTab("flash-sales")}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "flash-sales"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-400 hover:text-slate-700"
+          }`}
+        >
+          <Zap className="w-4 h-4 text-amber-500 fill-amber-500" /> Flash Sales
+        </button>
+        <button
+          onClick={() => setActiveTab("gift-cards")}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "gift-cards"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-400 hover:text-slate-700"
+          }`}
+        >
+          <Gift className="w-4 h-4 text-indigo-600" /> Gift Cards
+        </button>
+        <button
+          onClick={() => setActiveTab("qna")}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "qna"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-400 hover:text-slate-700"
+          }`}
+        >
+          <HelpCircle className="w-4 h-4 text-indigo-600" /> Q&A Desk
         </button>
       </div>
 
@@ -2965,6 +3011,15 @@ export default function AdminDashboardPage() {
 
       {/* Returns (RMA) Management Tab */}
       {activeTab === "returns" && <AdminReturnsTab />}
+
+      {/* Flash Sales Management Tab */}
+      {activeTab === "flash-sales" && <AdminFlashSalesTab />}
+
+      {/* Gift Cards & Store Credit Management Tab */}
+      {activeTab === "gift-cards" && <AdminGiftCardsTab />}
+
+      {/* Product Community Q&A Desk Tab */}
+      {activeTab === "qna" && <AdminQnATab />}
 
       {/* QUICK RESTOCK / ADJUSTMENT MODAL */}
       {restockingProduct && (
