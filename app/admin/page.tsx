@@ -45,6 +45,7 @@ import {
 import AdminReturnsTab from "@/components/admin/admin-returns-tab";
 import AdminLiveFeedBanner from "@/components/admin/admin-live-feed-banner";
 import DailySettlementModal from "@/components/admin/daily-settlement-modal";
+import { AdminNotificationCenter } from "@/components/admin-notification-center";
 
 interface Order {
   id: string;
@@ -884,6 +885,7 @@ export default function AdminDashboardPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          <AdminNotificationCenter />
           <button
             onClick={() => {
               fetchOrders();

@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db/prisma";
 import { verifyWebhookSignature, verifyPaystackTransaction } from "@/lib/paystack";
 import { notifyOrderStatusChange } from "@/lib/notify";
 import { generateDocumentPdf } from "@/lib/pdf/invoice";
+import { createAdminAlert } from "@/lib/notifications/admin-alerts";
+import { processReferralRewardOnPayment } from "@/lib/referrals/service";
 
 export async function POST(req: NextRequest) {
   try {
@@ -207,6 +209,45 @@ export async function POST(req: NextRequest) {
       orderId: targetOrder.id,
       status: "paid",
     });
+
+    // 7. Process Referral Reward if customer was referred
+    try {
+      await processReferralRewardOnPayment(targetOrder.id);
+    } catch (refErr) {
+      console.error("[Paystack Webhook] Referral reward error:", refErr);
+    }
+
+    // 8. Trigger Real-Time Admin Notification
+    try {
+      await createAdminAlert({
+        type: "order_paid",
+        title: `New Paid Order #${targetOrder.order_number}`,
+        message: `Order #${targetOrder.order_number} confirmed for ₦${(amount / 100).toLocaleString()} by ${targetOrder.customer.name}`,
+        referenceId: targetOrder.id,
+        link: "/admin",
+      });
+
+      // Check for low stock alerts on purchased items
+      for (const item of targetOrder.items) {
+        if (item.product_id) {
+          const product = await prisma.product.findUnique({
+            where: { id: item.product_id },
+            select: { name: true, stock_qty: true },
+          });
+          if (product && product.stock_qty <= 5) {
+            await createAdminAlert({
+              type: "low_stock",
+              title: `Low Stock Alert: ${product.name}`,
+              message: `${product.name} has only ${product.stock_qty} unit(s) remaining in warehouse!`,
+              referenceId: item.product_id,
+              link: "/admin",
+            });
+          }
+        }
+      }
+    } catch (alertErr) {
+      console.error("[Paystack Webhook] Admin notification alert error:", alertErr);
+    }
 
     return NextResponse.json({ success: true, orderNumber: updatedOrder.orderRecord.order_number });
   } catch (error: unknown) {

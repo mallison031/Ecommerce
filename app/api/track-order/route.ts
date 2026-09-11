@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { formatToE164 } from "@/lib/utils";
+import { getCourierTrackingUrl } from "@/lib/notifications/courier-tracking";
+
+export const dynamic = "force-dynamic";
 
 function maskString(str: string): string {
   if (!str || str.length <= 2) return str;
@@ -16,10 +19,10 @@ function maskEmail(email: string): string {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const query = searchParams.get("query")?.trim();
+    const query = (searchParams.get("query") || searchParams.get("tracking") || "").trim();
 
     if (!query) {
-      return NextResponse.json({ error: "Please provide an order number or phone number" }, { status: 400 });
+      return NextResponse.json({ error: "Please provide an order number, tracking number, or phone number" }, { status: 400 });
     }
 
     // Clean query
@@ -27,8 +30,25 @@ export async function GET(req: NextRequest) {
 
     let orders: any[] = [];
 
-    // 1. Try matching Order Number if digits present and relatively short (e.g. 1 to 7 digits)
-    if (/^#?\d{1,7}$/.test(query)) {
+    // 1. Try matching tracking number first (e.g. SPD-1002-1234, GIG-..., etc.)
+    const trackingMatch = await prisma.order.findFirst({
+      where: {
+        tracking_number: { equals: query, mode: "insensitive" },
+      },
+      include: {
+        customer: true,
+        items: true,
+        invoice: true,
+        receipt: true,
+      },
+    });
+
+    if (trackingMatch) {
+      orders = [trackingMatch];
+    }
+
+    // 2. Try matching Order Number if digits present and relatively short (e.g. 1 to 7 digits)
+    if (orders.length === 0 && /^#?\d{1,7}$/.test(query)) {
       const orderNum = parseInt(cleanDigits, 10);
       const singleOrder = await prisma.order.findUnique({
         where: { order_number: orderNum },
@@ -45,7 +65,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 2. If no order found and digits match a phone number (>= 10 digits)
+    // 3. If no order found and digits match a phone number (>= 10 digits)
     if (orders.length === 0 && cleanDigits.length >= 10) {
       const e164 = formatToE164(cleanDigits);
       orders = await prisma.order.findMany({
@@ -68,40 +88,79 @@ export async function GET(req: NextRequest) {
 
     if (orders.length === 0) {
       return NextResponse.json(
-        { error: "No orders found matching that order number or phone number." },
+        { error: "No orders found matching that order number, tracking code, or phone number." },
         { status: 404 }
       );
     }
 
     // Format safe customer response
-    const sanitizedOrders = orders.map((o) => ({
-      id: o.id,
-      order_number: o.order_number,
-      status: o.status,
-      total_kobo: o.total_kobo,
-      currency: o.currency,
-      created_at: o.created_at,
-      paid_at: o.paid_at,
-      customer_name: o.customer.name,
-      customer_email_masked: maskEmail(o.customer.email),
-      customer_phone_masked: maskString(o.customer.phone),
-      whatsapp_opt_in: o.customer.whatsapp_opt_in,
-      delivery_address: o.delivery_address,
-      courier_name: o.courier_name || null,
-      tracking_number: o.tracking_number || null,
-      dispatch_notes: o.dispatch_notes || null,
-      shipped_at: o.shipped_at || null,
-      delivered_at: o.delivered_at || null,
-      items: o.items.map((i: any) => ({
-        id: i.id,
-        name: i.product_name_snapshot,
-        unit_price_kobo: i.unit_price_kobo_snapshot,
-        quantity: i.qty,
-        line_total_kobo: i.line_total_kobo,
-      })),
-      invoice_number: o.invoice?.invoice_number || null,
-      receipt_number: o.receipt?.receipt_number || null,
-    }));
+    const sanitizedOrders = orders.map((o) => {
+      const courierName = o.courier_name || null;
+      const trackingNumber = o.tracking_number || null;
+      const trackingUrl = getCourierTrackingUrl(courierName, trackingNumber);
+
+      const timeline = [
+        {
+          step: "Order Placed",
+          description: "Order received in our system",
+          date: o.created_at,
+          completed: true,
+          current: o.status === "pending_payment",
+        },
+        {
+          step: "Payment Confirmed",
+          description: "Payment confirmed via Paystack",
+          date: o.paid_at,
+          completed: !!o.paid_at || ["paid", "shipped", "delivered"].includes(o.status),
+          current: o.status === "paid",
+        },
+        {
+          step: "Dispatched / In Transit",
+          description: courierName ? `Handed over to ${courierName}` : "Awaiting courier pickup",
+          date: o.shipped_at,
+          completed: !!o.shipped_at || ["shipped", "delivered"].includes(o.status),
+          current: o.status === "shipped",
+        },
+        {
+          step: "Delivered",
+          description: "Successfully delivered to recipient",
+          date: o.delivered_at,
+          completed: o.status === "delivered",
+          current: o.status === "delivered",
+        },
+      ];
+
+      return {
+        id: o.id,
+        order_number: o.order_number,
+        status: o.status,
+        total_kobo: o.total_kobo,
+        currency: o.currency,
+        created_at: o.created_at,
+        paid_at: o.paid_at,
+        customer_name: o.customer.name,
+        customer_email_masked: maskEmail(o.customer.email),
+        customer_phone_masked: maskString(o.customer.phone),
+        whatsapp_opt_in: o.customer.whatsapp_opt_in,
+        delivery_address: o.delivery_address,
+        courier_name: courierName,
+        tracking_number: trackingNumber,
+        tracking_url: trackingUrl,
+        dispatch_notes: o.dispatch_notes || null,
+        shipped_at: o.shipped_at || null,
+        delivered_at: o.delivered_at || null,
+        timeline,
+        items: o.items.map((i: any) => ({
+          id: i.id,
+          name: i.product_name_snapshot,
+          unit_price_kobo: i.unit_price_kobo_snapshot,
+          quantity: i.qty,
+          line_total_kobo: i.line_total_kobo,
+        })),
+        invoice_number: o.invoice?.invoice_number || null,
+        receipt_number: o.receipt?.receipt_number || null,
+      };
+    });
 
     return NextResponse.json({ orders: sanitizedOrders });
   } catch (err: unknown) {

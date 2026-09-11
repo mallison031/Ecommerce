@@ -42,6 +42,7 @@ import { useCart } from "@/context/cart-context";
 import CustomerReturnsView from "@/components/customer-returns-view";
 import ReturnRequestModal from "@/components/return-request-modal";
 import CustomerLoyaltyCard from "@/components/customer-loyalty-card";
+import { CustomerReferralCard } from "@/components/customer-referral-card";
 
 const NIGERIAN_STATES = [
   "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno",
@@ -1244,7 +1245,12 @@ function AccountPortalContent() {
       {/* ==========================================
           TAB 6: REWARDS CLUB & VIP LOYALTY POINTS
       ========================================== */}
-      {activeTab === "loyalty" && <CustomerLoyaltyCard />}
+      {activeTab === "loyalty" && (
+        <div className="space-y-8">
+          <CustomerLoyaltyCard />
+          <CustomerReferralCard />
+        </div>
+      )}
 
       {/* ==========================================
           RETURN REQUEST MODAL
