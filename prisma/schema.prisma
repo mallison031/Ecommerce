@@ -86,6 +86,7 @@ model Product {
   stock_qty   Int         @default(0)
   image_urls  String[]
   is_active   Boolean     @default(true)
+  supports_engraving Boolean @default(false)
   order_items     OrderItem[]
   reviews         ProductReview[]
   adjustment_logs StockAdjustmentLog[]
@@ -173,6 +174,9 @@ model OrderItem {
   unit_price_kobo_snapshot  Int
   qty                       Int
   line_total_kobo           Int
+  custom_engraving          String?
+  engraving_font            String?
+  gift_wrap                 Boolean @default(false)
   return_items              ReturnItem[]
 
   @@index([order_id])
@@ -227,10 +231,15 @@ model SalesLedgerEntry {
 
 model SupportTicket {
   id                  String              @id @default(cuid())
+  customer_name       String?
+  customer_email      String?
   whatsapp_phone_e164 String
+  subject             String?
   order_id            String?
   order               Order?              @relation(fields: [order_id], references: [id], onDelete: SetNull)
   message             String
+  admin_notes         String?
+  resolution_notes    String?
   status              SupportTicketStatus @default(open)
   created_at          DateTime            @default(now())
   updated_at          DateTime            @updatedAt

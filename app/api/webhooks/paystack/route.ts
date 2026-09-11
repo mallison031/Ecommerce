@@ -159,6 +159,9 @@ export async function POST(req: NextRequest) {
       }
 
       return { orderRecord, invoice, receipt };
+    }, {
+      maxWait: 15000,
+      timeout: 30000,
     });
 
     // 5. Generate Invoice & Receipt PDFs

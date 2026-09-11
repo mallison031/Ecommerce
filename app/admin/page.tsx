@@ -43,6 +43,7 @@ import {
   RefreshCcw,
 } from "lucide-react";
 import AdminReturnsTab from "@/components/admin/admin-returns-tab";
+import AdminSupportDeskTab from "@/components/admin/admin-support-desk-tab";
 import AdminLiveFeedBanner from "@/components/admin/admin-live-feed-banner";
 import DailySettlementModal from "@/components/admin/daily-settlement-modal";
 import { AdminNotificationCenter } from "@/components/admin-notification-center";
@@ -72,6 +73,9 @@ interface Order {
     qty: number;
     unit_price_kobo_snapshot: number;
     line_total_kobo: number;
+    custom_engraving?: string | null;
+    engraving_font?: string | null;
+    gift_wrap?: boolean;
   }>;
   invoice?: { invoice_number: number } | null;
   receipt?: { receipt_number: number } | null;
@@ -126,6 +130,9 @@ interface AbandonedOrder {
     product_name_snapshot: string;
     qty: number;
     line_total_kobo: number;
+    custom_engraving?: string | null;
+    engraving_font?: string | null;
+    gift_wrap?: boolean;
   }>;
 }
 
@@ -1181,8 +1188,18 @@ export default function AdminDashboardPage() {
                         <td className="p-3.5">
                           <div className="max-w-xs space-y-0.5">
                             {order.items.map((item, idx) => (
-                              <div key={idx} className="truncate text-slate-800">
-                                {item.qty}x {item.product_name_snapshot}
+                              <div key={idx} className="text-slate-800 text-xs">
+                                <span className="font-medium">{item.qty}x {item.product_name_snapshot}</span>
+                                {item.custom_engraving && (
+                                  <span className="block text-[10px] text-indigo-600 font-mono">
+                                    ✨ Engraved: &quot;{item.custom_engraving}&quot; ({item.engraving_font || "script"})
+                                  </span>
+                                )}
+                                {item.gift_wrap && (
+                                  <span className="inline-block text-[10px] text-amber-700 bg-amber-50 px-1 rounded">
+                                    🎁 Luxury Gift Box
+                                  </span>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -1461,150 +1478,7 @@ export default function AdminDashboardPage() {
       )}
 
       {/* Tab: Support Tickets */}
-      {activeTab === "tickets" && (
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs font-semibold text-slate-500 mr-1">Filter:</span>
-              {["", "open", "escalated", "closed"].map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setTicketFilter(s)}
-                  className={`px-3 py-1 rounded-md text-xs font-medium capitalize transition-all ${
-                    ticketFilter === s
-                      ? "bg-slate-900 text-white"
-                      : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  {s || "All"}
-                </button>
-              ))}
-            </div>
-
-            <p className="text-xs text-slate-500">
-              Live WhatsApp customer inquiries routed to support agents.
-            </p>
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider">
-                <tr>
-                  <th className="p-3.5">Ticket #</th>
-                  <th className="p-3.5">Customer & WhatsApp</th>
-                  <th className="p-3.5">Message / Inquiry</th>
-                  <th className="p-3.5">Order</th>
-                  <th className="p-3.5">Status</th>
-                  <th className="p-3.5 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-700">
-                {tickets.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-400">
-                      No support tickets match the current filter.
-                    </td>
-                  </tr>
-                ) : (
-                  tickets.map((ticket) => {
-                    const cleanPhone = ticket.whatsapp_phone_e164.replace(/\D/g, "");
-                    return (
-                      <tr key={ticket.id} className="hover:bg-slate-50/50">
-                        <td className="p-3.5 font-bold font-mono text-slate-900">
-                          #{ticket.id.slice(-6).toUpperCase()}
-                          <div className="text-[10px] font-normal text-slate-400 mt-0.5">
-                            {new Date(ticket.created_at).toLocaleDateString("en-NG", {
-                              month: "short",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </div>
-                        </td>
-                        <td className="p-3.5">
-                          <div className="font-semibold text-slate-900">
-                            {ticket.order?.customer.name || "WhatsApp Guest"}
-                          </div>
-                          <div className="text-slate-600 font-mono text-[11px] mt-0.5">
-                            {ticket.whatsapp_phone_e164}
-                          </div>
-                        </td>
-                        <td className="p-3.5 max-w-sm">
-                          <p className="text-slate-800 line-clamp-2">{ticket.message}</p>
-                        </td>
-                        <td className="p-3.5">
-                          {ticket.order ? (
-                            <div>
-                              <span className="font-bold text-slate-900">#{ticket.order.order_number}</span>
-                              <div className="text-[11px] text-slate-500">
-                                {formatKoboToNaira(ticket.order.total_kobo)}
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400 italic">None linked</span>
-                          )}
-                        </td>
-                        <td className="p-3.5">
-                          <span
-                            className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                              ticket.status === "open"
-                                ? "bg-amber-100 text-amber-800"
-                                : ticket.status === "escalated"
-                                ? "bg-rose-100 text-rose-800"
-                                : "bg-emerald-100 text-emerald-800"
-                            }`}
-                          >
-                            {ticket.status}
-                          </span>
-                        </td>
-                        <td className="p-3.5 text-right">
-                          <div className="inline-flex items-center justify-end gap-1.5 flex-wrap">
-                            <a
-                              href={`https://wa.me/${cleanPhone}?text=${encodeURIComponent(
-                                `Hello, this is Aura Store support regarding Ticket #${ticket.id.slice(-6).toUpperCase()}.`
-                              )}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition-colors"
-                            >
-                              <MessageCircle className="w-3.5 h-3.5" /> Reply
-                            </a>
-
-                            {ticket.status !== "closed" ? (
-                              <button
-                                onClick={() => handleUpdateTicketStatus(ticket.id, "closed")}
-                                className="px-2 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
-                              >
-                                Close
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleUpdateTicketStatus(ticket.id, "open")}
-                                className="px-2 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
-                              >
-                                Reopen
-                              </button>
-                            )}
-
-                            {ticket.status === "open" && (
-                              <button
-                                onClick={() => handleUpdateTicketStatus(ticket.id, "escalated")}
-                                className="px-2 py-1.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 font-semibold"
-                              >
-                                Escalate
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {activeTab === "tickets" && <AdminSupportDeskTab />}
 
       {/* Tab: Abandoned Cart Recovery */}
       {activeTab === "abandoned" && (

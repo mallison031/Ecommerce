@@ -185,6 +185,9 @@ export default function CheckoutPage() {
           items: items.map((i) => ({
             productId: i.productId,
             quantity: i.quantity,
+            customEngraving: i.customEngraving,
+            engravingFont: i.engravingFont,
+            giftWrap: i.giftWrap,
           })),
         }),
       });
@@ -503,13 +506,25 @@ export default function CheckoutPage() {
           <h2 className="text-sm font-bold text-slate-900">Your Order Items</h2>
           <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto pr-1">
             {items.map((item) => (
-              <div key={item.productId} className="py-2.5 flex items-center justify-between text-xs">
-                <div className="min-w-0 pr-2">
+              <div key={item.itemKey || item.productId} className="py-2.5 flex items-start justify-between text-xs gap-3">
+                <div className="min-w-0 flex-1">
                   <span className="font-semibold text-slate-800 line-clamp-1">{item.name}</span>
-                  <span className="text-slate-400">Qty: {item.quantity}</span>
+                  <div className="flex items-center gap-2 text-slate-400 mt-0.5">
+                    <span>Qty: {item.quantity}</span>
+                    {item.giftWrap && (
+                      <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded font-medium">
+                        🎁 Gift Box
+                      </span>
+                    )}
+                  </div>
+                  {item.customEngraving && (
+                    <p className="text-[10px] text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded mt-1 font-mono line-clamp-1">
+                      ✨ Engraving: &quot;{item.customEngraving}&quot; ({item.engravingFont || "script"})
+                    </p>
+                  )}
                 </div>
                 <span className="font-medium text-slate-900 shrink-0">
-                  {formatKoboToNaira(item.priceKobo * item.quantity)}
+                  {formatKoboToNaira((item.priceKobo + (item.giftWrap ? 150000 : 0)) * item.quantity)}
                 </span>
               </div>
             ))}

@@ -48,55 +48,73 @@ export default function CartPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         {/* Item List */}
         <div className="md:col-span-2 space-y-4">
-          {items.map((item) => (
-            <div
-              key={item.productId}
-              className="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-200"
-            >
-              <img
-                src={item.imageUrl || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=200&q=80"}
-                alt={item.name}
-                className="w-16 h-16 rounded-lg object-cover bg-slate-100 shrink-0"
-              />
+          {items.map((item) => {
+            const itemKey = item.itemKey || item.productId;
+            const itemUnitKobo = item.priceKobo + (item.giftWrap ? 150000 : 0);
+            return (
+              <div
+                key={itemKey}
+                className="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-200"
+              >
+                <img
+                  src={item.imageUrl || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=200&q=80"}
+                  alt={item.name}
+                  className="w-16 h-16 rounded-lg object-cover bg-slate-100 shrink-0"
+                />
 
-              <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-semibold text-slate-900 truncate">{item.name}</h3>
-                <p className="text-xs text-slate-500 mt-0.5">{formatKoboToNaira(item.priceKobo)}</p>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-semibold text-slate-900 truncate">{item.name}</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">{formatKoboToNaira(itemUnitKobo)}</p>
 
-                <div className="flex items-center gap-3 mt-3">
-                  <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
-                    <button
-                      onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                      className="p-1 hover:bg-slate-200 text-slate-600 transition-colors"
-                    >
-                      <Minus className="w-3.5 h-3.5" />
-                    </button>
-                    <span className="px-3 text-xs font-semibold text-slate-800">{item.quantity}</span>
-                    <button
-                      onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                      className="p-1 hover:bg-slate-200 text-slate-600 transition-colors"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
+                  {/* Personalization & Gift Wrap Badges */}
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {item.customEngraving && (
+                      <span className="text-[10px] font-semibold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 inline-flex items-center gap-1">
+                        ✨ Engraved: <em className="font-serif">"{item.customEngraving}"</em>
+                      </span>
+                    )}
+                    {item.giftWrap && (
+                      <span className="text-[10px] font-semibold text-pink-900 bg-pink-50 px-2 py-0.5 rounded border border-pink-200 inline-flex items-center gap-1">
+                        🎁 Velvet Gift Box (+₦1,500)
+                      </span>
+                    )}
                   </div>
 
-                  <button
-                    onClick={() => removeItem(item.productId)}
-                    className="text-slate-400 hover:text-red-600 p-1 transition-colors cursor-pointer"
-                    title="Remove item"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-3 mt-3">
+                    <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
+                      <button
+                        onClick={() => updateQuantity(itemKey, item.quantity - 1)}
+                        className="p-1 hover:bg-slate-200 text-slate-600 transition-colors"
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="px-3 text-xs font-semibold text-slate-800">{item.quantity}</span>
+                      <button
+                        onClick={() => updateQuantity(itemKey, item.quantity + 1)}
+                        className="p-1 hover:bg-slate-200 text-slate-600 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={() => removeItem(itemKey)}
+                      className="text-slate-400 hover:text-red-600 p-1 transition-colors cursor-pointer"
+                      title="Remove item"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="text-right shrink-0">
+                  <span className="text-sm font-bold text-slate-900">
+                    {formatKoboToNaira(itemUnitKobo * item.quantity)}
+                  </span>
                 </div>
               </div>
-
-              <div className="text-right shrink-0">
-                <span className="text-sm font-bold text-slate-900">
-                  {formatKoboToNaira(item.priceKobo * item.quantity)}
-                </span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Order Summary */}

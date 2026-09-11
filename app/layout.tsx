@@ -8,6 +8,7 @@ import { HeaderCartButton } from "@/components/header-cart-button";
 import { HeaderWishlistButton } from "@/components/header-wishlist-button";
 import { HeaderSearchBar } from "@/components/header-search-bar";
 import { HeaderAccountButton } from "@/components/header-account-button";
+import { SupportContactModal } from "@/components/support-contact-modal";
 
 export const metadata: Metadata = {
   title: "Aura Essentials | Curated Multi-Sector Storefront",
@@ -156,6 +157,7 @@ export default function RootLayout({
               © {new Date().getFullYear()} Aura Store. All rights reserved. Secured by Paystack.
             </div>
           </footer>
+          <SupportContactModal />
           </WishlistProvider>
         </CartProvider>
       </body>

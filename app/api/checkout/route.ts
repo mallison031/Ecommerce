@@ -21,6 +21,9 @@ const checkoutSchema = z.object({
       z.object({
         productId: z.string(),
         quantity: z.number().int().positive(),
+        customEngraving: z.string().optional(),
+        engravingFont: z.string().optional(),
+        giftWrap: z.boolean().optional().default(false),
       })
     )
     .min(1, "At least one item is required in cart"),
@@ -51,16 +54,16 @@ export async function POST(req: NextRequest) {
       items,
     } = parsed.data;
 
-    // Fetch product information
-    const productIds = items.map((i) => i.productId);
+    // Fetch product information (using unique product IDs)
+    const uniqueProductIds = Array.from(new Set(items.map((i) => i.productId)));
     const products = await prisma.product.findMany({
       where: {
-        id: { in: productIds },
+        id: { in: uniqueProductIds },
         is_active: true,
       },
     });
 
-    if (products.length !== items.length) {
+    if (products.length !== uniqueProductIds.length) {
       return NextResponse.json(
         { error: "One or more products in your cart are no longer available." },
         { status: 400 }
@@ -69,19 +72,24 @@ export async function POST(req: NextRequest) {
 
     const productMap = new Map(products.map((p) => [p.id, p]));
 
-    // Calculate totals & line items with price snapshots
+    // Calculate totals & line items with price snapshots and customization
     let subtotalKobo = 0;
     const orderItemsData = items.map((item) => {
       const product = productMap.get(item.productId)!;
-      const lineTotal = product.price_kobo * item.quantity;
+      const giftWrapAddon = item.giftWrap ? 150000 : 0;
+      const unitPriceKobo = product.price_kobo + giftWrapAddon;
+      const lineTotal = unitPriceKobo * item.quantity;
       subtotalKobo += lineTotal;
 
       return {
         product_id: product.id,
         product_name_snapshot: product.name,
-        unit_price_kobo_snapshot: product.price_kobo,
+        unit_price_kobo_snapshot: unitPriceKobo,
         qty: item.quantity,
         line_total_kobo: lineTotal,
+        custom_engraving: item.customEngraving ? item.customEngraving.trim() : null,
+        engraving_font: item.engravingFont ? item.engravingFont.trim() : null,
+        gift_wrap: Boolean(item.giftWrap),
       };
     });
 

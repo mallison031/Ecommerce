@@ -103,6 +103,9 @@ export async function PATCH(
       }
 
       return { updatedProduct, log, waitlistNotifiedCount };
+    }, {
+      maxWait: 15000,
+      timeout: 30000,
     });
 
     return NextResponse.json({

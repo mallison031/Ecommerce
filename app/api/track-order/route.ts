@@ -19,10 +19,16 @@ function maskEmail(email: string): string {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const query = (searchParams.get("query") || searchParams.get("tracking") || "").trim();
+    const query = (
+      searchParams.get("query") ||
+      searchParams.get("tracking") ||
+      searchParams.get("email") ||
+      searchParams.get("phone") ||
+      ""
+    ).trim();
 
     if (!query) {
-      return NextResponse.json({ error: "Please provide an order number, tracking number, or phone number" }, { status: 400 });
+      return NextResponse.json({ error: "Please provide an order number, tracking number, email, or phone number" }, { status: 400 });
     }
 
     // Clean query
@@ -65,7 +71,26 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 3. If no order found and digits match a phone number (>= 10 digits)
+    // 3. If query contains '@', search by customer email
+    if (orders.length === 0 && query.includes("@")) {
+      orders = await prisma.order.findMany({
+        where: {
+          customer: {
+            email: { equals: query, mode: "insensitive" },
+          },
+        },
+        include: {
+          customer: true,
+          items: true,
+          invoice: true,
+          receipt: true,
+        },
+        orderBy: { created_at: "desc" },
+        take: 5,
+      });
+    }
+
+    // 4. If no order found and digits match a phone number (>= 10 digits)
     if (orders.length === 0 && cleanDigits.length >= 10) {
       const e164 = formatToE164(cleanDigits);
       orders = await prisma.order.findMany({
@@ -88,7 +113,7 @@ export async function GET(req: NextRequest) {
 
     if (orders.length === 0) {
       return NextResponse.json(
-        { error: "No orders found matching that order number, tracking code, or phone number." },
+        { error: "No orders found matching that order number, tracking code, email, or phone number." },
         { status: 404 }
       );
     }
@@ -156,6 +181,9 @@ export async function GET(req: NextRequest) {
           unit_price_kobo: i.unit_price_kobo_snapshot,
           quantity: i.qty,
           line_total_kobo: i.line_total_kobo,
+          custom_engraving: i.custom_engraving || null,
+          engraving_font: i.engraving_font || null,
+          gift_wrap: Boolean(i.gift_wrap),
         })),
         invoice_number: o.invoice?.invoice_number || null,
         receipt_number: o.receipt?.receipt_number || null,

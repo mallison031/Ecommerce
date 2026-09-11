@@ -9,13 +9,17 @@ export interface CartItem {
   priceKobo: number;
   imageUrl?: string;
   quantity: number;
+  customEngraving?: string;
+  engravingFont?: string;
+  giftWrap?: boolean;
+  itemKey?: string;
 }
 
 interface CartContextType {
   items: CartItem[];
   addItem: (item: Omit<CartItem, "quantity">, qty?: number) => void;
-  removeItem: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
+  removeItem: (itemKeyOrProductId: string) => void;
+  updateQuantity: (itemKeyOrProductId: string, quantity: number) => void;
   clearCart: () => void;
   totalItemsCount: number;
   subtotalKobo: number;
@@ -24,6 +28,10 @@ interface CartContextType {
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 const STORAGE_KEY = "ecommerce_cart_session";
+
+function getItemKey(item: { productId: string; customEngraving?: string; giftWrap?: boolean }): string {
+  return `${item.productId}__${item.customEngraving || ""}__${item.giftWrap ? "gw" : "std"}`;
+}
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
@@ -53,32 +61,42 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [items, isInitialized]);
 
   const addItem = (product: Omit<CartItem, "quantity">, qty = 1) => {
+    const key = getItemKey(product);
     setItems((prev) => {
-      const existing = prev.find((item) => item.productId === product.productId);
+      const existing = prev.find((item) => (item.itemKey || getItemKey(item)) === key);
       if (existing) {
         return prev.map((item) =>
-          item.productId === product.productId
+          (item.itemKey || getItemKey(item)) === key
             ? { ...item, quantity: item.quantity + qty }
             : item
         );
       }
-      return [...prev, { ...product, quantity: qty }];
+      return [...prev, { ...product, itemKey: key, quantity: qty }];
     });
   };
 
-  const removeItem = (productId: string) => {
-    setItems((prev) => prev.filter((item) => item.productId !== productId));
+  const removeItem = (itemKeyOrProductId: string) => {
+    setItems((prev) =>
+      prev.filter((item) => {
+        const key = item.itemKey || getItemKey(item);
+        return key !== itemKeyOrProductId && item.productId !== itemKeyOrProductId;
+      })
+    );
   };
 
-  const updateQuantity = (productId: string, quantity: number) => {
+  const updateQuantity = (itemKeyOrProductId: string, quantity: number) => {
     if (quantity <= 0) {
-      removeItem(productId);
+      removeItem(itemKeyOrProductId);
       return;
     }
     setItems((prev) =>
-      prev.map((item) =>
-        item.productId === productId ? { ...item, quantity } : item
-      )
+      prev.map((item) => {
+        const key = item.itemKey || getItemKey(item);
+        if (key === itemKeyOrProductId || item.productId === itemKeyOrProductId) {
+          return { ...item, quantity };
+        }
+        return item;
+      })
     );
   };
 
@@ -87,7 +105,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   };
 
   const totalItemsCount = items.reduce((sum, item) => sum + item.quantity, 0);
-  const subtotalKobo = items.reduce((sum, item) => sum + item.priceKobo * item.quantity, 0);
+  const subtotalKobo = items.reduce(
+    (sum, item) => sum + (item.priceKobo + (item.giftWrap ? 150000 : 0)) * item.quantity,
+    0
+  );
 
   return (
     <CartContext.Provider
