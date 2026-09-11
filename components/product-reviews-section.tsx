@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Star,
   ShieldCheck,
@@ -73,6 +73,31 @@ export function ProductReviewsSection({
 
   // Helpful votes tracking
   const [votedMap, setVotedMap] = useState<Record<string, boolean>>({});
+
+  // Auto-detect magic 1-click review link query params (?review=true&name=...&email=...&rating=5)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("review") === "true") {
+      const name = params.get("name");
+      const email = params.get("email");
+      const rating = params.get("rating");
+      if (name) setFormName(decodeURIComponent(name));
+      if (email) setFormEmail(decodeURIComponent(email));
+      if (rating && !isNaN(Number(rating))) {
+        setFormRating(Math.max(1, Math.min(5, Number(rating))));
+      }
+      setShowReviewModal(true);
+
+      // Smooth scroll to review section
+      setTimeout(() => {
+        const elem = document.getElementById("customer-reviews-section");
+        if (elem) {
+          elem.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 350);
+    }
+  }, []);
 
   const handleHelpfulVote = async (reviewId: string) => {
     if (votedMap[reviewId]) return;
@@ -176,7 +201,7 @@ export function ProductReviewsSection({
   };
 
   return (
-    <div className="border-t border-slate-200 pt-10 mt-12 space-y-8">
+    <div id="customer-reviews-section" className="border-t border-slate-200 pt-10 mt-12 space-y-8">
       {/* Section Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

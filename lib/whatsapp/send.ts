@@ -174,3 +174,99 @@ export async function sendWhatsAppTextMessage({
     return { skipped: false, success: false, error: message };
   }
 }
+
+export async function notifyCustomerReturnStatus({
+  toE164,
+  orderNumber,
+  rmaNumber,
+  status,
+  refundAmountKobo,
+  refundMethod,
+  orderId,
+  trackingNumber,
+  courierName,
+  creditCode,
+  note,
+}: {
+  toE164: string;
+  orderNumber: number;
+  rmaNumber: string;
+  status: string;
+  refundAmountKobo?: number;
+  refundMethod?: string;
+  orderId?: string;
+  trackingNumber?: string;
+  courierName?: string;
+  creditCode?: string;
+  note?: string;
+}): Promise<SendTemplateResult> {
+  const formattedAmount = refundAmountKobo ? `₦${(refundAmountKobo / 100).toLocaleString()}` : "";
+  let message = `📦 *Aura Store - Return Update (${rmaNumber})*\nOrder: #${orderNumber}\nStatus: *${status.toUpperCase().replace("_", " ")}*`;
+
+  if (status === "approved") {
+    message += `\n\n✅ Your return request has been approved.`;
+    if (courierName) message += `\nCourier: ${courierName}`;
+    if (trackingNumber) message += `\nPickup Tracking #: ${trackingNumber}`;
+    message += `\nPlease package the items securely for pickup.`;
+  } else if (status === "in_transit") {
+    message += `\n\n🚚 Your returned item has been collected by ${courierName || "the courier"} and is in transit to our inspection facility.`;
+  } else if (status === "received") {
+    message += `\n\n🔍 Returned items have been received at our warehouse and passed inspection.`;
+  } else if (status === "refunded") {
+    message += `\n\n🎉 Refund of *${formattedAmount}* has been issued!`;
+    if (refundMethod === "store_credit" && creditCode) {
+      message += `\nStore Credit Coupon Code: *${creditCode}* (Apply during next checkout).`;
+    } else {
+      message += `\nRefund processed to your original payment card via Paystack.`;
+    }
+  } else if (status === "rejected") {
+    message += `\n\n❌ Return request could not be approved.`;
+    if (note) message += `\nReason: ${note}`;
+  }
+
+  return sendWhatsAppTextMessage({ toE164, text: message, orderId });
+}
+
+export async function notifyAdminReturnRequest({
+  rmaNumber,
+  orderNumber,
+  customerName,
+  reason,
+  totalRefundKobo,
+  orderId,
+}: {
+  rmaNumber: string;
+  orderNumber: number;
+  customerName: string;
+  reason: string;
+  totalRefundKobo: number;
+  orderId?: string;
+}): Promise<SendTemplateResult> {
+  const formattedAmount = `₦${(totalRefundKobo / 100).toLocaleString()}`;
+  const adminPhone = process.env.ADMIN_WHATSAPP_PHONE || "+2348000000001";
+  const text = `🚨 *New Return Request (${rmaNumber})*\nOrder: #${orderNumber}\nCustomer: ${customerName}\nReason: ${reason.replace(/_/g, " ")}\nRefund Expected: ${formattedAmount}\n\nReview & Approve in Admin Dashboard: /admin?tab=returns`;
+
+  return sendWhatsAppTextMessage({ toE164: adminPhone, text, orderId });
+}
+
+export async function sendReviewRequestNotification({
+  toE164,
+  customerName,
+  orderNumber,
+  productName,
+  reviewUrl,
+  orderId,
+}: {
+  toE164: string;
+  customerName: string;
+  orderNumber: number;
+  productName: string;
+  reviewUrl: string;
+  orderId?: string;
+}): Promise<SendTemplateResult> {
+  const text = `⭐ *How was your order, ${customerName}?*\n\nYour order *#${orderNumber}* containing *${productName}* has been delivered!\n\nHelp other shoppers by leaving a quick star rating & verified review:\n🔗 ${reviewUrl}\n\nThank you for shopping with Aura Store!`;
+
+  return sendWhatsAppTextMessage({ toE164, text, orderId });
+}
+
+

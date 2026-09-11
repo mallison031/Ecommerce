@@ -28,9 +28,17 @@ import {
   Bell,
   Check,
   X,
+  RefreshCcw,
+  CornerDownLeft,
+  Upload,
+  Image as ImageIcon,
+  Copy,
+  Sparkles,
 } from "lucide-react";
 import { formatKoboToNaira } from "@/lib/utils";
 import { useCart } from "@/context/cart-context";
+import CustomerReturnsView from "@/components/customer-returns-view";
+import ReturnRequestModal from "@/components/return-request-modal";
 
 const NIGERIAN_STATES = [
   "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno",
@@ -81,6 +89,7 @@ interface Order {
   items: OrderItem[];
   invoice?: { invoice_number: number } | null;
   receipt?: { receipt_number: number } | null;
+  return_requests?: any[];
 }
 
 function AccountPortalContent() {
@@ -102,7 +111,10 @@ function AccountPortalContent() {
   });
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<"orders" | "addresses" | "saved" | "settings">("orders");
+  const [activeTab, setActiveTab] = useState<"orders" | "addresses" | "saved" | "settings" | "returns">("orders");
+  const [returnRequests, setReturnRequests] = useState<any[]>([]);
+  const [returnModalOrder, setReturnModalOrder] = useState<Order | null>(null);
+  const [returnBanner, setReturnBanner] = useState<string | null>(null);
 
   // Sign-in Form State
   const [authStep, setAuthStep] = useState<"email" | "otp">("email");
@@ -149,6 +161,7 @@ function AccountPortalContent() {
         setOrders(data.orders || []);
         setAddresses(data.addresses || []);
         setWaitlists(data.waitlists || []);
+        setReturnRequests(data.return_requests || []);
         setStats(data.stats || {});
         setEditName(data.customer.name || "");
         setEditPhone(data.customer.phone || "");
@@ -544,6 +557,23 @@ function AccountPortalContent() {
         </div>
       )}
 
+      {/* Return Request Banner */}
+      {returnBanner && (
+        <div className="p-4 bg-purple-50 border border-purple-200 rounded-2xl flex items-center justify-between gap-4 animate-in fade-in">
+          <div className="flex items-center gap-3 text-xs font-bold text-purple-900">
+            <Sparkles className="w-5 h-5 text-purple-600 shrink-0" />
+            <span>{returnBanner}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab("returns")}
+            className="px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shrink-0 transition-colors"
+          >
+            Track RMA &rarr;
+          </button>
+        </div>
+      )}
+
       {/* Customer Header Card */}
       <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -643,6 +673,18 @@ function AccountPortalContent() {
 
         <button
           type="button"
+          onClick={() => setActiveTab("returns")}
+          className={`flex items-center gap-2 py-3 px-4 border-b-2 transition-all shrink-0 ${
+            activeTab === "returns"
+              ? "border-pink-600 text-pink-600"
+              : "border-transparent text-slate-500 hover:text-slate-900"
+          }`}
+        >
+          <RefreshCcw className="w-4 h-4" /> Returns & Refunds ({returnRequests.length})
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab("addresses")}
           className={`flex items-center gap-2 py-3 px-4 border-b-2 transition-all shrink-0 ${
             activeTab === "addresses"
@@ -732,6 +774,14 @@ function AccountPortalContent() {
                           timeStyle: "short",
                         })}
                       </span>
+                      {order.return_requests?.map((rma: any) => (
+                        <span
+                          key={rma.id}
+                          className="px-2 py-0.5 rounded-full font-bold uppercase tracking-wider text-[9px] bg-purple-100 text-purple-800 border border-purple-300"
+                        >
+                          {rma.rma_number}: {rma.status.replace("_", " ")}
+                        </span>
+                      ))}
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
@@ -773,6 +823,18 @@ function AccountPortalContent() {
                       >
                         <Download className="w-3.5 h-3.5 text-slate-600" /> Invoice
                       </a>
+
+                      {/* Request Return / Refund */}
+                      {(order.status === "delivered" || order.status === "paid") && (
+                        <button
+                          type="button"
+                          onClick={() => setReturnModalOrder(order)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-purple-50 border border-purple-200 hover:bg-purple-100 text-purple-900 text-xs font-semibold transition-colors"
+                          title="Request Return or Refund"
+                        >
+                          <CornerDownLeft className="w-3.5 h-3.5 text-purple-600" /> Return
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -1134,6 +1196,32 @@ function AccountPortalContent() {
           </form>
         </div>
       )}
+
+      {/* ==========================================
+          TAB 5: RETURNS & REFUND REQUESTS
+      ========================================== */}
+      {activeTab === "returns" && (
+        <CustomerReturnsView
+          returns={returnRequests}
+          onRefresh={fetchProfile}
+          onStartReturn={() => setActiveTab("orders")}
+        />
+      )}
+
+      {/* ==========================================
+          RETURN REQUEST MODAL
+      ========================================== */}
+      <ReturnRequestModal
+        order={returnModalOrder}
+        isOpen={!!returnModalOrder}
+        onClose={() => setReturnModalOrder(null)}
+        onSuccess={(createdRma) => {
+          fetchProfile();
+          setActiveTab("returns");
+          setReturnBanner(`Return request #${createdRma?.rma_number} submitted successfully!`);
+          setTimeout(() => setReturnBanner(null), 6000);
+        }}
+      />
 
       {/* ==========================================
           ADD ADDRESS MODAL

@@ -40,7 +40,11 @@ import {
   Archive,
   History,
   Sliders,
+  RefreshCcw,
 } from "lucide-react";
+import AdminReturnsTab from "@/components/admin/admin-returns-tab";
+import AdminLiveFeedBanner from "@/components/admin/admin-live-feed-banner";
+import DailySettlementModal from "@/components/admin/daily-settlement-modal";
 
 interface Order {
   id: string;
@@ -53,6 +57,7 @@ interface Order {
   dispatch_notes?: string | null;
   shipped_at?: string | null;
   delivered_at?: string | null;
+  review_reminder_sent_at?: string | null;
   created_at: string;
   customer: {
     name: string;
@@ -125,7 +130,7 @@ interface AbandonedOrder {
 
 export default function AdminDashboardPage() {
   const [activeTab, setActiveTab] = useState<
-    "orders" | "sales" | "inventory" | "notifications" | "tickets" | "abandoned" | "promotions" | "reviews"
+    "orders" | "sales" | "inventory" | "notifications" | "tickets" | "abandoned" | "promotions" | "reviews" | "returns"
   >("orders");
   const [orders, setOrders] = useState<Order[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
@@ -239,6 +244,34 @@ export default function AdminDashboardPage() {
   const [salesStatusFilter, setSalesStatusFilter] = useState<string>("all");
   const [salesSearchQuery, setSalesSearchQuery] = useState<string>("");
   const [salesLoading, setSalesLoading] = useState<boolean>(false);
+
+  // Daily Settlement Modal State
+  const [showSettlementModal, setShowSettlementModal] = useState<boolean>(false);
+
+  // Review Reminder State
+  const [sendingReviewId, setSendingReviewId] = useState<string | null>(null);
+  const [reviewSentMap, setReviewSentMap] = useState<Record<string, boolean>>({});
+
+  const handleSendReviewRequest = async (orderId: string) => {
+    setSendingReviewId(orderId);
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}/send-review-request`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setReviewSentMap((prev) => ({ ...prev, [orderId]: true }));
+        alert("1-click review invitation sent to customer successfully!");
+      } else {
+        alert(data.error || "Failed to send review request");
+      }
+    } catch (err) {
+      console.error("Failed sending review reminder:", err);
+      alert("Network error sending review request");
+    } finally {
+      setSendingReviewId(null);
+    }
+  };
 
   const fetchSalesData = async () => {
     setSalesLoading(true);
@@ -842,6 +875,12 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
+      {/* Live Store Feed & Real-Time Pulse Banner */}
+      <AdminLiveFeedBanner
+        onSelectTab={(tab) => setActiveTab(tab as any)}
+        onOpenSettlement={() => setShowSettlementModal(true)}
+      />
+
       {/* Metrics Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-xl border border-slate-200">
@@ -968,6 +1007,16 @@ export default function AdminDashboardPage() {
               {reviewMetrics.pendingCount} pending
             </span>
           )}
+        </button>
+        <button
+          onClick={() => setActiveTab("returns")}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "returns"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-400 hover:text-slate-700"
+          }`}
+        >
+          <RefreshCcw className="w-4 h-4 text-purple-600" /> Returns (RMA)
         </button>
       </div>
 
@@ -1135,6 +1184,38 @@ export default function AdminDashboardPage() {
                                   Return
                                 </button>
                               </>
+                            )}
+
+                            {order.status === "delivered" && (
+                              <button
+                                onClick={() => handleSendReviewRequest(order.id)}
+                                disabled={
+                                  sendingReviewId === order.id ||
+                                  Boolean(order.review_reminder_sent_at) ||
+                                  reviewSentMap[order.id]
+                                }
+                                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md font-semibold text-xs transition-colors shadow-xs ${
+                                  order.review_reminder_sent_at || reviewSentMap[order.id]
+                                    ? "bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed"
+                                    : "bg-amber-500 hover:bg-amber-600 text-white"
+                                }`}
+                                title={
+                                  order.review_reminder_sent_at || reviewSentMap[order.id]
+                                    ? "Review reminder already sent"
+                                    : "Send 1-click review invitation via WhatsApp"
+                                }
+                              >
+                                {sendingReviewId === order.id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Star className="w-3.5 h-3.5 fill-current" />
+                                )}
+                                <span>
+                                  {order.review_reminder_sent_at || reviewSentMap[order.id]
+                                    ? "Review Sent"
+                                    : "Ask Review"}
+                                </span>
+                              </button>
                             )}
 
                             {/* Documents: Packing slip & Receipt */}
@@ -2863,6 +2944,9 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
+      {/* Returns (RMA) Management Tab */}
+      {activeTab === "returns" && <AdminReturnsTab />}
+
       {/* QUICK RESTOCK / ADJUSTMENT MODAL */}
       {restockingProduct && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -3298,6 +3382,12 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Daily Settlement Reconciliation Modal */}
+      <DailySettlementModal
+        isOpen={showSettlementModal}
+        onClose={() => setShowSettlementModal(false)}
+      />
     </div>
   );
 }

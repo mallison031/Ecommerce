@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Fetch complete customer profile data in parallel
-    const [orders, addresses, waitlists] = await Promise.all([
+    const [orders, addresses, waitlists, returnRequests] = await Promise.all([
       prisma.order.findMany({
         where: { customer_id: customer.id },
         include: {
@@ -37,6 +37,9 @@ export async function GET(req: NextRequest) {
           invoice: { select: { invoice_number: true } },
           receipt: { select: { receipt_number: true } },
           payment: { select: { status: true, paystack_reference: true, verified_at: true } },
+          return_requests: {
+            include: { items: true },
+          },
         },
         orderBy: { created_at: "desc" },
       }),
@@ -56,6 +59,33 @@ export async function GET(req: NextRequest) {
               stock_qty: true,
               image_urls: true,
               sector: { select: { slug: true, name: true } },
+            },
+          },
+        },
+        orderBy: { created_at: "desc" },
+      }),
+      prisma.returnRequest.findMany({
+        where: { customer_id: customer.id },
+        include: {
+          order: {
+            select: {
+              id: true,
+              order_number: true,
+              total_kobo: true,
+              status: true,
+              delivered_at: true,
+            },
+          },
+          items: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                  image_urls: true,
+                },
+              },
             },
           },
         },
@@ -85,10 +115,12 @@ export async function GET(req: NextRequest) {
       orders,
       addresses,
       waitlists,
+      return_requests: returnRequests,
       stats: {
         totalOrders: orders.length,
         activeOrdersCount,
         deliveredOrdersCount,
+        totalReturnsCount: returnRequests.length,
         totalSpentKobo,
       },
     });
