@@ -16,6 +16,7 @@ import {
   Clock,
   ArrowRight,
   Loader2,
+  ExternalLink,
 } from "lucide-react";
 
 interface TrackedOrder {
@@ -32,6 +33,7 @@ interface TrackedOrder {
   delivery_address: string;
   courier_name: string | null;
   tracking_number: string | null;
+  tracking_url?: string | null;
   dispatch_notes: string | null;
   shipped_at: string | null;
   delivered_at: string | null;
@@ -305,6 +307,17 @@ function TrackOrderContent() {
                         )}
                       </div>
                     </div>
+
+                    {order.tracking_url && (
+                      <a
+                        href={order.tracking_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition shadow-xs shrink-0 self-start sm:self-center"
+                      >
+                        Track on {order.courier_name || "Courier"} <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
                   </div>
                 )}
 

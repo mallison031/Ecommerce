@@ -107,6 +107,11 @@ model Customer {
   whatsapp_opt_in     Boolean           @default(false)
   whatsapp_phone_e164 String?
   loyalty_points      Int               @default(0)
+  referral_code       String?           @unique
+  referred_by_id      String?
+  referred_by         Customer?         @relation("CustomerReferrals", fields: [referred_by_id], references: [id], onDelete: SetNull)
+  referrals           Customer[]        @relation("CustomerReferrals")
+  referral_rewards    ReferralReward[]  @relation("ReferrerRewards")
   orders              Order[]
   addresses           CustomerAddress[]
   sessions            CustomerSession[]
@@ -116,6 +121,7 @@ model Customer {
   updated_at          DateTime          @updatedAt
 
   @@index([email])
+  @@index([referral_code])
   @@index([whatsapp_phone_e164])
 }
 
@@ -431,4 +437,35 @@ model LoyaltyPointsLedger {
   @@index([order_id])
   @@index([created_at])
 }
+
+model ReferralReward {
+  id              String   @id @default(cuid())
+  referrer_id     String
+  referrer        Customer @relation("ReferrerRewards", fields: [referrer_id], references: [id], onDelete: Cascade)
+  referee_id      String?
+  order_id        String?
+  reward_points   Int      @default(500)
+  status          String   @default("awarded") // awarded, pending, cancelled
+  created_at      DateTime @default(now())
+
+  @@index([referrer_id])
+  @@index([referee_id])
+  @@index([order_id])
+}
+
+model AdminNotification {
+  id           String   @id @default(cuid())
+  type         String   // order_paid, low_stock, rma_requested, ticket_opened, order_shipped
+  title        String
+  message      String
+  link         String?
+  reference_id String?
+  is_read      Boolean  @default(false)
+  created_at   DateTime @default(now())
+
+  @@index([is_read])
+  @@index([created_at])
+  @@index([type])
+}
+
 

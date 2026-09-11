@@ -1676,6 +1676,117 @@ async function runTests() {
   );
   console.log();
 
+  // --- TEST 25: Customer Referral & Growth Engine (Task 1) ---
+  console.log("--- TEST 25: Customer Referral & Growth Engine ---");
+  // 1. Customer Referral GET
+  const referralGetRes = await fetch(`${BASE_URL}/api/customer/referrals`, {
+    headers: rmaAuthHeaders,
+  });
+  assert(referralGetRes.status === 200, "Customer referral GET returns HTTP 200");
+  const referralGetData = await referralGetRes.json();
+  assert(referralGetData.success === true, "Customer referral GET reports success: true");
+  assert(typeof referralGetData.data.referralCode === "string", "Referral response returns referral code");
+  assert(referralGetData.data.referralLink.includes("ref="), "Referral response returns valid referral link");
+  assert(referralGetData.data.rewardPerReferral === 500, "Referral reward is 500 points per friend");
+
+  // 2. Reject self-referral
+  const selfReferralRes = await fetch(`${BASE_URL}/api/customer/referrals`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${rmaToken}`,
+    },
+    body: JSON.stringify({ referralCode: referralGetData.data.referralCode }),
+  });
+  assert(selfReferralRes.status === 400, "Self-referral is rejected with HTTP 400");
+
+  // 3. Admin Referrals Metrics
+  const adminReferralsRes = await fetch(`${BASE_URL}/api/admin/referrals`);
+  assert(adminReferralsRes.status === 200, "Admin referrals endpoint returns HTTP 200");
+  const adminReferralsData = await adminReferralsRes.json();
+  assert(adminReferralsData.success === true, "Admin referrals reports success: true");
+  assert(typeof adminReferralsData.metrics.totalReferredCustomers === "number", "Admin tracks total referred customers");
+  console.log();
+
+  // --- TEST 26: Real-Time Admin Notification Center & Sound Alerts (Task 2) ---
+  console.log("--- TEST 26: Real-Time Admin Notification Center & Sound Alerts ---");
+  // 1. Create notification
+  const createAlertRes = await fetch(`${BASE_URL}/api/admin/notifications`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type: "order_paid",
+      title: "Test Simulation Order Alert",
+      message: "Order #99999 was paid successfully",
+      referenceId: "sim-order-999",
+      link: "/admin",
+    }),
+  });
+  assert(createAlertRes.status === 200, "Create admin alert returns HTTP 200");
+  const createAlertData = await createAlertRes.json();
+  assert(createAlertData.success === true, "Create alert reports success: true");
+  const alertId = createAlertData.notification.id;
+
+  // 2. Fetch notifications
+  const getAlertsRes = await fetch(`${BASE_URL}/api/admin/notifications?limit=10`);
+  assert(getAlertsRes.status === 200, "Get admin notifications returns HTTP 200");
+  const getAlertsData = await getAlertsRes.json();
+  assert(getAlertsData.success === true, "Get alerts reports success: true");
+  assert(getAlertsData.unreadCount >= 1, "Unread notifications count is tracked");
+  assert(Array.isArray(getAlertsData.notifications), "Alerts list is an array");
+  assert(getAlertsData.liveSummary.openTickets >= 0, "Live summary includes open tickets");
+
+  // 3. Mark single notification as read
+  const markReadRes = await fetch(`${BASE_URL}/api/admin/notifications`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: alertId }),
+  });
+  assert(markReadRes.status === 200, "Mark single alert read returns HTTP 200");
+
+  // 4. Mark all as read
+  const markAllReadRes = await fetch(`${BASE_URL}/api/admin/notifications`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ markAll: true }),
+  });
+  assert(markAllReadRes.status === 200, "Mark all alerts read returns HTTP 200");
+  console.log();
+
+  // --- TEST 27: Automated Courier Dispatch & Real-Time Tracking Deep-Links (Task 3) ---
+  console.log("--- TEST 27: Courier Dispatch & Real-Time Tracking Deep-Links ---");
+  // 1. Transition an order to shipped with Courier details
+  const shipCourierRes = await fetch(`${BASE_URL}/api/admin/orders/${bulkOrder1.id}/status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      status: "shipped",
+      courier_name: "Speedaf Express",
+      tracking_number: "SPD-NG-889900",
+    }),
+  });
+  assert(shipCourierRes.status === 200, "Order transition to shipped with courier returns HTTP 200");
+  const shipCourierData = await shipCourierRes.json();
+  assert(shipCourierData.order.courier_name === "Speedaf Express", "Order records courier name");
+  assert(shipCourierData.order.tracking_number === "SPD-NG-889900", "Order records tracking number");
+
+  // 2. Query Track Order API by Tracking Code
+  const trackByCodeRes = await fetch(`${BASE_URL}/api/track-order?tracking=SPD-NG-889900`);
+  assert(trackByCodeRes.status === 200, "Track order by tracking code returns HTTP 200");
+  const trackByCodeData = await trackByCodeRes.json();
+  assert(Array.isArray(trackByCodeData.orders) && trackByCodeData.orders.length > 0, "Track order returns matched order");
+  const trackedOrder = trackByCodeData.orders[0];
+  assert(trackedOrder.courier_name === "Speedaf Express", "Tracked order includes courier name");
+  assert(trackedOrder.tracking_number === "SPD-NG-889900", "Tracked order includes tracking number");
+  assert(
+    trackedOrder.tracking_url.includes("speedaf.com/tracking?nums=SPD-NG-889900"),
+    "Tracked order includes valid external courier tracking URL"
+  );
+  assert(Array.isArray(trackedOrder.timeline), "Tracked order includes 4-step progress timeline");
+  assert(trackedOrder.timeline.length === 4, "Timeline contains all 4 milestones");
+  assert(trackedOrder.timeline[2].completed === true, "In Transit milestone is flagged as completed");
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");
