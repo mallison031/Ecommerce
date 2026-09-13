@@ -97,6 +97,7 @@ model Product {
   flash_sale_products   FlashSaleProduct[]
   questions             ProductQuestion[]
   watchlists            ProductWatchlist[]
+  volume_tiers          ProductVolumeTier[]
   created_at      DateTime    @default(now())
   updated_at  DateTime    @updatedAt
 
@@ -129,6 +130,7 @@ model Customer {
   replenishment_opt_in      Boolean   @default(true)
   unsubscribe_token         String?   @unique
   campaign_logs             MarketingCampaignLog[]
+  delivery_feedbacks        DeliveryFeedback[]
   created_at          DateTime          @default(now())
   updated_at          DateTime          @updatedAt
 
@@ -172,6 +174,7 @@ model Order {
   return_requests  ReturnRequest[]
   gift_card_redemptions GiftCardRedemption[]
   wallet_transactions   WalletTransaction[]
+  delivery_feedback     DeliveryFeedback?
 
   @@index([customer_id])
   @@index([status])
@@ -664,5 +667,53 @@ model MarketingCampaignLog {
   @@index([discount_code])
 }
 
+model DeliveryFeedback {
+  id                     String    @id @default(cuid())
+  order_id               String    @unique
+  order                  Order     @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  customer_id            String?
+  customer               Customer? @relation(fields: [customer_id], references: [id], onDelete: SetNull)
+  survey_token           String    @unique
+  survey_sent_at         DateTime?
+  nps_score              Int?      // 1-10
+  delivery_speed_rating  Int?      // 1-5
+  packaging_rating       Int?      // 1-5
+  product_quality_rating Int?      // 1-5
+  feedback_tags          String[]  @default([])
+  comments               String?
+  status                 String    @default("pending") // pending | completed
+  submitted_at           DateTime?
+  created_at             DateTime  @default(now())
+  updated_at             DateTime  @updatedAt
 
+  @@index([nps_score])
+  @@index([status])
+  @@index([survey_token])
+  @@index([created_at])
+}
 
+model ProductVolumeTier {
+  id                  String   @id @default(cuid())
+  product_id          String
+  product             Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  min_quantity        Int
+  max_quantity        Int?
+  discount_percentage Int      // e.g. 10 for 10%
+  created_at          DateTime @default(now())
+
+  @@unique([product_id, min_quantity])
+  @@index([product_id])
+}
+
+model CurrencySetting {
+  id                   String   @id @default(cuid())
+  code                 String   @unique // USD, GBP, EUR, NGN
+  name                 String
+  symbol               String
+  exchange_rate_to_ngn Float    // 1 foreign unit = X NGN (e.g. 1 USD = 1550 NGN)
+  is_active            Boolean  @default(true)
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  @@index([code])
+}
