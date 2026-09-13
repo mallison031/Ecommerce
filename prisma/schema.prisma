@@ -96,6 +96,7 @@ model Product {
   complementary_bundles ProductBundle[]       @relation("ComplementaryBundles")
   flash_sale_products   FlashSaleProduct[]
   questions             ProductQuestion[]
+  watchlists            ProductWatchlist[]
   created_at      DateTime    @default(now())
   updated_at  DateTime    @updatedAt
 
@@ -110,6 +111,7 @@ model Customer {
   whatsapp_opt_in     Boolean           @default(false)
   whatsapp_phone_e164 String?
   loyalty_points      Int               @default(0)
+  wallet_balance_kobo Int               @default(0)
   referral_code       String?           @unique
   referred_by_id      String?
   referred_by         Customer?         @relation("CustomerReferrals", fields: [referred_by_id], references: [id], onDelete: SetNull)
@@ -120,6 +122,8 @@ model Customer {
   sessions            CustomerSession[]
   return_requests     ReturnRequest[]
   loyalty_ledger      LoyaltyPointsLedger[]
+  wallet_transactions WalletTransaction[]
+  watchlists          ProductWatchlist[]
   created_at          DateTime          @default(now())
   updated_at          DateTime          @updatedAt
 
@@ -151,6 +155,7 @@ model Order {
   updated_at       DateTime          @updatedAt
 
   gift_card_discount_kobo Int      @default(0)
+  wallet_discount_kobo    Int      @default(0)
   items            OrderItem[]
   payment          Payment?
   invoice          Invoice?
@@ -160,6 +165,7 @@ model Order {
   support_tickets  SupportTicket[]
   return_requests  ReturnRequest[]
   gift_card_redemptions GiftCardRedemption[]
+  wallet_transactions   WalletTransaction[]
 
   @@index([customer_id])
   @@index([status])
@@ -572,6 +578,48 @@ model ProductAnswer {
   updated_at    DateTime        @updatedAt
 
   @@index([question_id])
+}
+
+model ProductWatchlist {
+  id                 String    @id @default(cuid())
+  product_id         String
+  product            Product   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  customer_id        String?
+  customer           Customer? @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  email              String
+  phone              String?
+  notify_price_drop  Boolean   @default(true)
+  notify_restock     Boolean   @default(true)
+  initial_price_kobo Int
+  target_price_kobo  Int?
+  is_active          Boolean   @default(true)
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+
+  @@unique([product_id, email])
+  @@index([product_id])
+  @@index([customer_id])
+  @@index([email])
+  @@index([is_active])
+}
+
+model WalletTransaction {
+  id                 String    @id @default(cuid())
+  customer_id        String
+  customer           Customer  @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  order_id           String?
+  order              Order?    @relation(fields: [order_id], references: [id], onDelete: SetNull)
+  type               String    // TOPUP, GIFT_CARD_REDEEM, ORDER_PAYMENT, REFUND
+  amount_kobo        Int       // positive for credit, negative for debit
+  balance_after_kobo Int
+  description        String
+  reference          String?   // Paystack transaction reference, Gift card code, or Order ID
+  created_at         DateTime  @default(now())
+
+  @@index([customer_id])
+  @@index([order_id])
+  @@index([type])
+  @@index([created_at])
 }
 
 

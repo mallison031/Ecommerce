@@ -23,6 +23,7 @@ import {
   CheckCircle2,
   X,
   Gift,
+  Wallet,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -49,6 +50,8 @@ export default function CheckoutPage() {
   const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [isCustomerLoggedIn, setIsCustomerLoggedIn] = useState(false);
+  const [walletBalanceKobo, setWalletBalanceKobo] = useState<number>(0);
+  const [useWallet, setUseWallet] = useState<boolean>(false);
 
   useEffect(() => {
     async function loadCustomer() {
@@ -62,6 +65,10 @@ export default function CheckoutPage() {
             setEmail((prev) => prev || data.customer.email || "");
             setPhone((prev) => prev || data.customer.phone || "");
             if (data.customer.whatsapp_opt_in) setWhatsappOptIn(true);
+            if (data.customer.wallet_balance_kobo) {
+              setWalletBalanceKobo(data.customer.wallet_balance_kobo);
+              setUseWallet(true);
+            }
             if (data.addresses && data.addresses.length > 0) {
               setSavedAddresses(data.addresses);
               const defaultAddr = data.addresses.find((a: any) => a.is_default) || data.addresses[0];
@@ -115,7 +122,11 @@ export default function CheckoutPage() {
   const giftCardDeductionKobo = appliedGiftCard
     ? Math.min(appliedGiftCard.balanceKobo, totalBeforeGiftCard)
     : 0;
-  const totalKobo = Math.max(0, totalBeforeGiftCard - giftCardDeductionKobo);
+  const totalAfterGiftCard = Math.max(0, totalBeforeGiftCard - giftCardDeductionKobo);
+  const walletDeductionKobo = useWallet && walletBalanceKobo > 0
+    ? Math.min(walletBalanceKobo, totalAfterGiftCard)
+    : 0;
+  const totalKobo = Math.max(0, totalAfterGiftCard - walletDeductionKobo);
 
   if (items.length === 0) {
     return (
@@ -244,6 +255,7 @@ export default function CheckoutPage() {
           isExpress: state === "Lagos" ? isExpress : false,
           couponCode: appliedCoupon?.code || undefined,
           giftCardCode: appliedGiftCard?.code || undefined,
+          useWalletBalance: useWallet && walletDeductionKobo > 0,
           whatsappOptIn,
           items: items.map((i) => ({
             productId: i.productId,
@@ -670,11 +682,39 @@ export default function CheckoutPage() {
             )}
           </div>
 
+          {/* Customer Store Credit Wallet Section (if balance exists) */}
+          {walletBalanceKobo > 0 && (
+            <div className="border-t border-slate-200 pt-4">
+              <div className="p-3 rounded-xl bg-amber-50/80 border border-amber-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Wallet className="w-4 h-4 text-amber-700" />
+                    <span className="text-xs font-bold text-slate-900">
+                      Store Credit Wallet
+                    </span>
+                  </div>
+                  <span className="text-xs font-extrabold text-amber-900 font-mono">
+                    {formatKoboToNaira(walletBalanceKobo)} available
+                  </span>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-700 font-medium select-none">
+                  <input
+                    type="checkbox"
+                    checked={useWallet}
+                    onChange={(e) => setUseWallet(e.target.checked)}
+                    className="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500"
+                  />
+                  <span>Apply store wallet balance (-{formatKoboToNaira(walletDeductionKobo)})</span>
+                </label>
+              </div>
+            </div>
+          )}
+
           {/* Gift Card & Store Credit Section */}
           <div className="border-t border-slate-200 pt-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                <Gift className="w-3.5 h-3.5 text-indigo-600" /> Gift Card or Store Credit
+                <Gift className="w-3.5 h-3.5 text-indigo-600" /> Gift Card Voucher
               </span>
             </div>
 
@@ -759,8 +799,15 @@ export default function CheckoutPage() {
 
             {appliedGiftCard && giftCardDeductionKobo > 0 && (
               <div className="flex justify-between text-indigo-600 font-bold bg-indigo-50/50 py-1 px-1.5 rounded">
-                <span>Gift Card / Credit ({appliedGiftCard.code})</span>
+                <span>Gift Card ({appliedGiftCard.code})</span>
                 <span>-{formatKoboToNaira(giftCardDeductionKobo)}</span>
+              </div>
+            )}
+
+            {walletDeductionKobo > 0 && (
+              <div className="flex justify-between text-amber-700 font-bold bg-amber-50/70 py-1 px-1.5 rounded">
+                <span>Store Credit Wallet</span>
+                <span>-{formatKoboToNaira(walletDeductionKobo)}</span>
               </div>
             )}
 

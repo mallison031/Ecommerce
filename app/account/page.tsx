@@ -36,6 +36,8 @@ import {
   Sparkles,
   Crown,
   Award,
+  Wallet,
+  TrendingDown,
 } from "lucide-react";
 import { formatKoboToNaira } from "@/lib/utils";
 import { useCart } from "@/context/cart-context";
@@ -43,6 +45,8 @@ import CustomerReturnsView from "@/components/customer-returns-view";
 import ReturnRequestModal from "@/components/return-request-modal";
 import CustomerLoyaltyCard from "@/components/customer-loyalty-card";
 import { CustomerReferralCard } from "@/components/customer-referral-card";
+import { CustomerWalletTab } from "@/components/customer-wallet-tab";
+import { CustomerWatchlistTab } from "@/components/customer-watchlist-tab";
 
 const NIGERIAN_STATES = [
   "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno",
@@ -115,7 +119,7 @@ function AccountPortalContent() {
   });
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<"orders" | "addresses" | "saved" | "settings" | "returns" | "loyalty">("orders");
+  const [activeTab, setActiveTab] = useState<"orders" | "wallet" | "watchlist" | "loyalty" | "returns" | "addresses" | "saved" | "settings">("orders");
   const [returnRequests, setReturnRequests] = useState<any[]>([]);
   const [returnModalOrder, setReturnModalOrder] = useState<Order | null>(null);
   const [returnBanner, setReturnBanner] = useState<string | null>(null);
@@ -695,6 +699,30 @@ function AccountPortalContent() {
 
         <button
           type="button"
+          onClick={() => setActiveTab("wallet")}
+          className={`flex items-center gap-2 py-3 px-4 border-b-2 transition-all shrink-0 ${
+            activeTab === "wallet"
+              ? "border-amber-600 text-amber-600 font-bold"
+              : "border-transparent text-slate-500 hover:text-slate-900"
+          }`}
+        >
+          <Wallet className="w-4 h-4 text-amber-600" /> Store Credit Wallet
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("watchlist")}
+          className={`flex items-center gap-2 py-3 px-4 border-b-2 transition-all shrink-0 ${
+            activeTab === "watchlist"
+              ? "border-pink-600 text-pink-600 font-bold"
+              : "border-transparent text-slate-500 hover:text-slate-900"
+          }`}
+        >
+          <TrendingDown className="w-4 h-4 text-pink-600" /> Price Alerts & Watchlist
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab("loyalty")}
           className={`flex items-center gap-2 py-3 px-4 border-b-2 transition-all shrink-0 ${
             activeTab === "loyalty"
@@ -1250,6 +1278,20 @@ function AccountPortalContent() {
           <CustomerLoyaltyCard />
           <CustomerReferralCard />
         </div>
+      )}
+
+      {/* ==========================================
+          TAB 7: STORE CREDIT WALLET
+      ========================================== */}
+      {activeTab === "wallet" && (
+        <CustomerWalletTab />
+      )}
+
+      {/* ==========================================
+          TAB 8: WATCHLIST & PRICE DROP ALERTS
+      ========================================== */}
+      {activeTab === "watchlist" && (
+        <CustomerWatchlistTab />
       )}
 
       {/* ==========================================

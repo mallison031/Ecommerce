@@ -49,6 +49,7 @@ import AdminSupportDeskTab from "@/components/admin/admin-support-desk-tab";
 import { AdminFlashSalesTab } from "@/components/admin/admin-flash-sales-tab";
 import { AdminGiftCardsTab } from "@/components/admin/admin-gift-cards-tab";
 import { AdminQnATab } from "@/components/admin/admin-qna-tab";
+import { AdminWatchlistTab } from "@/components/admin/admin-watchlist-tab";
 import AdminLiveFeedBanner from "@/components/admin/admin-live-feed-banner";
 import DailySettlementModal from "@/components/admin/daily-settlement-modal";
 import { AdminNotificationCenter } from "@/components/admin-notification-center";
@@ -155,6 +156,7 @@ export default function AdminDashboardPage() {
     | "flash-sales"
     | "gift-cards"
     | "qna"
+    | "watchlist"
   >("orders");
   const [orders, setOrders] = useState<Order[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
@@ -1106,6 +1108,16 @@ export default function AdminDashboardPage() {
           }`}
         >
           <HelpCircle className="w-4 h-4 text-indigo-600" /> Q&A Desk
+        </button>
+        <button
+          onClick={() => setActiveTab("watchlist")}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "watchlist"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-400 hover:text-slate-700"
+          }`}
+        >
+          <Bell className="w-4 h-4 text-amber-600" /> Watchlist Demand
         </button>
       </div>
 
@@ -3020,6 +3032,9 @@ export default function AdminDashboardPage() {
 
       {/* Product Community Q&A Desk Tab */}
       {activeTab === "qna" && <AdminQnATab />}
+
+      {/* Demand Intelligence & Watchlist Tab */}
+      {activeTab === "watchlist" && <AdminWatchlistTab />}
 
       {/* QUICK RESTOCK / ADJUSTMENT MODAL */}
       {restockingProduct && (

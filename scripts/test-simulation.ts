@@ -57,6 +57,9 @@ async function runTests() {
   });
 
   const checkoutData = await checkoutRes.json();
+  if (!checkoutRes.ok || !checkoutData.success) {
+    console.error("CHECKOUT RES FAILED:", checkoutRes.status, checkoutData);
+  }
   assert(checkoutRes.ok && checkoutData.success === true, "Checkout returns authorizationUrl and orderId");
 
   const orderId = checkoutData.orderId;
@@ -2175,6 +2178,190 @@ async function runTests() {
   assert(verifiedQ.answers.length === 1, "Question now has 1 answer");
   assert(verifiedQ.answers[0].is_official === true, "Answer has is_official: true");
   assert(verifiedQ.answers[0].helpful_count === 1, "Answer has helpful_count: 1");
+  // ==========================================
+  // TEST 34: Price Drop & Restock Notification Watchlist (Milestone 21 - Module 1)
+  // ==========================================
+  console.log("--- TEST 34: Price Drop & Restock Notification Watchlist ---");
+  // 1. Subscribe to product watchlist
+  const watchEmail = "alert.shopper@example.com";
+  const watchRes = await fetch(`${BASE_URL}/api/products/${product.id}/watchlist`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: watchEmail,
+      phone: "+2348011223344",
+      notify_price_drop: true,
+      notify_restock: true,
+      target_price_kobo: Math.round(product.price_kobo * 0.85),
+    }),
+  });
+  assert(watchRes.status === 201, "POST /api/products/[id]/watchlist returns HTTP 201");
+  const watchData = await watchRes.json();
+  assert(watchData.success === true, "Watchlist subscription reports success: true");
+  assert(watchData.watchlist.email === watchEmail, "Watchlist records correct subscriber email");
+  assert(watchData.watchlist.notify_price_drop === true, "Watchlist enables notify_price_drop");
+  assert(watchData.watchlist.notify_restock === true, "Watchlist enables notify_restock");
+
+  // 2. Public status query
+  const checkWatchRes = await fetch(`${BASE_URL}/api/products/${product.id}/watchlist?email=${watchEmail}`);
+  assert(checkWatchRes.status === 200, "GET /api/products/[id]/watchlist status returns HTTP 200");
+  const checkWatchData = await checkWatchRes.json();
+  assert(checkWatchData.is_watching === true, "Product watchlist status confirms is_watching: true");
+
+  // 3. Customer watchlist for authenticated user
+  const subAuthWatchRes = await fetch(`${BASE_URL}/api/products/${product.id}/watchlist`, {
+    method: "POST",
+    headers: rmaAuthHeaders,
+    body: JSON.stringify({
+      email: rmaVerifyData.customer.email,
+      notify_price_drop: true,
+      notify_restock: true,
+    }),
+  });
+  assert(subAuthWatchRes.status === 201, "Auth customer watchlist subscription returns HTTP 201");
+
+  const custWatchlistRes = await fetch(`${BASE_URL}/api/customer/watchlist`, {
+    headers: rmaAuthHeaders,
+  });
+  assert(custWatchlistRes.status === 200, "GET /api/customer/watchlist returns HTTP 200");
+  const custWatchlistData = await custWatchlistRes.json();
+  assert(custWatchlistData.success === true, "Customer watchlist query reports success: true");
+  assert(Array.isArray(custWatchlistData.watchlist), "Customer watchlist returns array");
+  assert(
+    custWatchlistData.watchlist.some((w: any) => w.product_id === product.id),
+    "Customer watchlist contains subscribed product"
+  );
+
+  // 4. Admin Watchlist Demand Intelligence
+  const adminWatchRes = await fetch(`${BASE_URL}/api/admin/watchlist`);
+  assert(adminWatchRes.status === 200, "GET /api/admin/watchlist returns HTTP 200");
+  const adminWatchData = await adminWatchRes.json();
+  assert(adminWatchData.success === true, "Admin watchlist returns success: true");
+  assert(adminWatchData.metrics.total_subscribers >= 1, "Admin tracks total watchlist subscribers");
+  assert(Array.isArray(adminWatchData.demand_by_product), "Admin tracks demand by product array");
+  const watchedDemand = adminWatchData.demand_by_product.find((p: any) => p.product_id === product.id);
+  assert(Boolean(watchedDemand), "Subscribed product appears in admin demand report");
+  assert(watchedDemand.total_subscribers >= 1, "Product has positive subscriber volume");
+
+  // 5. Customer removes alert from watchlist
+  const deleteWatchRes = await fetch(`${BASE_URL}/api/customer/watchlist?productId=${product.id}`, {
+    method: "DELETE",
+    headers: rmaAuthHeaders,
+  });
+  assert(deleteWatchRes.status === 200, "DELETE /api/customer/watchlist returns HTTP 200");
+  console.log();
+
+  // ==========================================
+  // TEST 35: Multi-Product Spec Comparison Matrix (Milestone 21 - Module 2)
+  // ==========================================
+  console.log("--- TEST 35: Multi-Product Spec Comparison Matrix ---");
+  const comparePageRes = await fetch(`${BASE_URL}/compare`);
+  assert(comparePageRes.status === 200, "GET /compare page returns HTTP 200");
+  const comparePageHtml = await comparePageRes.text();
+  assert(
+    comparePageHtml.includes("Compare") || comparePageHtml.includes("Matrix") || comparePageHtml.includes("<!DOCTYPE html>"),
+    "Compare page renders HTML document"
+  );
+  console.log();
+
+  // ==========================================
+  // TEST 36: Customer Wallet & Store Credit Top-Up Portal (Milestone 21 - Module 3)
+  // ==========================================
+  console.log("--- TEST 36: Customer Wallet & Store Credit Top-Up Portal ---");
+  // 1. Query initial customer wallet balance
+  const walletRes = await fetch(`${BASE_URL}/api/customer/wallet`, {
+    headers: rmaAuthHeaders,
+  });
+  assert(walletRes.status === 200, "GET /api/customer/wallet returns HTTP 200");
+  const walletData = await walletRes.json();
+  assert(walletData.success === true, "Customer wallet reports success: true");
+  assert(typeof walletData.wallet_balance_kobo === "number", "Customer wallet returns numeric balance in kobo");
+  assert(Array.isArray(walletData.transactions), "Wallet returns transactions array");
+
+  // 2. Direct top-up to wallet
+  const topUpRes = await fetch(`${BASE_URL}/api/customer/wallet/top-up`, {
+    method: "POST",
+    headers: rmaAuthHeaders,
+    body: JSON.stringify({
+      amount_kobo: 1000000, // ₦10,000
+    }),
+  });
+  assert(topUpRes.status === 200, "POST /api/customer/wallet/top-up returns HTTP 200");
+  const topUpData = await topUpRes.json();
+  assert(topUpData.success === true, "Wallet top-up succeeded");
+  assert(topUpData.credited_kobo === 1000000, "Credited 1,000,000 kobo (₦10,000)");
+  assert(topUpData.new_balance_kobo >= 1000000, "New wallet balance reflects deposit");
+
+  // 3. Issue a voucher and claim into wallet
+  const newVoucherRes = await fetch(`${BASE_URL}/api/gift-cards/purchase`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      amount_kobo: 500000, // ₦5,000
+      recipient_name: "Customer Wallet User",
+      recipient_email: rmaVerifyData.customer.email,
+      sender_name: "Aura Store Rewards",
+      message: "Milestone bonus credit",
+    }),
+  });
+  assert(newVoucherRes.status === 201, "POST /api/gift-cards/purchase returns HTTP 201");
+  const newVoucherData = await newVoucherRes.json();
+  assert(newVoucherData.success === true, "Gift voucher purchased successfully");
+  const voucherCode = newVoucherData.gift_card.code;
+
+  const claimVoucherRes = await fetch(`${BASE_URL}/api/customer/wallet/redeem-gift-card`, {
+    method: "POST",
+    headers: rmaAuthHeaders,
+    body: JSON.stringify({ code: voucherCode }),
+  });
+  assert(claimVoucherRes.status === 200, "POST /api/customer/wallet/redeem-gift-card returns HTTP 200");
+  const claimVoucherData = await claimVoucherRes.json();
+  assert(claimVoucherData.success === true, "Voucher claimed into wallet balance");
+  assert(claimVoucherData.amount_credited_kobo === 500000, "Claimed ₦5,000 into wallet");
+
+  // 4. Verify wallet balance increased and ledger contains transaction
+  const verifyWalletRes = await fetch(`${BASE_URL}/api/customer/wallet`, {
+    headers: rmaAuthHeaders,
+  });
+  const verifyWalletData = await verifyWalletRes.json();
+  assert(
+    verifyWalletData.wallet_balance_kobo >= 1500000,
+    "Customer wallet balance has total credited funds (₦15,000+)"
+  );
+  assert(
+    verifyWalletData.transactions.some((t: any) => t.type === "GIFT_CARD_REDEEM"),
+    "Transactions ledger contains GIFT_CARD_REDEEM entry"
+  );
+
+  // 5. Checkout using customer wallet balance
+  const walletCheckoutRes = await fetch(`${BASE_URL}/api/checkout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: rmaVerifyData.customer.name,
+      email: rmaVerifyData.customer.email,
+      phone: rmaVerifyData.customer.phone || "+2348011223344",
+      deliveryAddress: "Victoria Island, Lagos",
+      state: "Lagos",
+      useWalletBalance: true,
+      items: [{ productId: product.id, quantity: 1 }],
+    }),
+  });
+  assert(walletCheckoutRes.status === 200, "Checkout with wallet balance returns HTTP 200");
+  const walletCheckoutData = await walletCheckoutRes.json();
+  assert(walletCheckoutData.success === true, "Wallet checkout succeeded");
+  assert(walletCheckoutData.walletDeductionKobo > 0, "Wallet deduction applied to order");
+
+  // 6. Verify WalletTransaction in database
+  const walletTx = await prisma.walletTransaction.findFirst({
+    where: {
+      customer_id: rmaVerifyData.customer.id,
+      type: "ORDER_PAYMENT",
+    },
+    orderBy: { created_at: "desc" },
+  });
+  assert(walletTx !== null, "ORDER_PAYMENT WalletTransaction persisted in database");
+  assert(walletTx!.amount_kobo < 0, "Wallet deduction transaction amount is negative debit");
   console.log();
 
   console.log("=================================================");
