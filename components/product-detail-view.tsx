@@ -24,12 +24,10 @@ import {
   Gift,
   Edit3,
   Clock,
-  Scale,
 } from "lucide-react";
 import { NIGERIAN_STATES, calculateShippingFee } from "@/lib/shipping";
 import { ProductQnA } from "@/components/product-qna";
 import { ProductWatchlistButton } from "@/components/product-watchlist-button";
-import { useCompareStore } from "@/lib/stores/compare-store";
 import { VolumePricingTable } from "@/components/volume-pricing-table";
 
 interface ProductDetailViewProps {
@@ -60,8 +58,6 @@ export function ProductDetailView({ product, sector, ratingSummary }: ProductDet
   const router = useRouter();
 
   const inWishlist = isInWishlist(product.id);
-  const { isInCompare, addItem: addCompareItem, removeItem: removeCompareItem } = useCompareStore();
-  const inCompare = isInCompare(product.id);
 
   const handleToggleWishlist = () => {
     toggleWishlist({
@@ -74,24 +70,6 @@ export function ProductDetailView({ product, sector, ratingSummary }: ProductDet
       sectorName: sector.name,
       inStock: product.stock_qty > 0,
     });
-  };
-
-  const handleToggleCompare = () => {
-    if (inCompare) {
-      removeCompareItem(product.id);
-    } else {
-      addCompareItem({
-        id: product.id,
-        name: product.name,
-        slug: product.slug,
-        sector_slug: sector.slug,
-        price_kobo: product.price_kobo,
-        image_url: product.image_urls[0] || "",
-        stock_qty: product.stock_qty,
-        supports_engraving: product.supports_engraving || false,
-        description: product.description,
-      });
-    }
   };
 
   const [selectedImage, setSelectedImage] = useState(
@@ -588,8 +566,8 @@ export function ProductDetailView({ product, sector, ratingSummary }: ProductDet
             </div>
           )}
 
-          {/* Action Row: Wishlist, Price/Stock Alert, & Compare */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {/* Action Row: Wishlist & Price/Stock Alert */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <button
               type="button"
               onClick={handleToggleWishlist}
@@ -609,19 +587,6 @@ export function ProductDetailView({ product, sector, ratingSummary }: ProductDet
               currentPriceKobo={product.price_kobo}
               stockQty={product.stock_qty}
             />
-
-            <button
-              type="button"
-              onClick={handleToggleCompare}
-              className={`w-full py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all ${
-                inCompare
-                  ? "bg-pink-50 border-pink-300 text-pink-700 hover:bg-pink-100"
-                  : "bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-              }`}
-            >
-              <Scale className="w-3.5 h-3.5 text-pink-600" />
-              <span className="truncate">{inCompare ? "In Compare" : "Compare Specs"}</span>
-            </button>
           </div>
 
           {/* WhatsApp Direct Product Inquiry Button */}

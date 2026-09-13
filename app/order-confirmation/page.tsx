@@ -1,29 +1,48 @@
 "use client";
 
-import React, { useEffect, Suspense } from "react";
+import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useCart } from "@/context/cart-context";
 import Link from "next/link";
-import { CheckCircle2, MessageCircle, ArrowRight, Package } from "lucide-react";
+import { CheckCircle2, MessageCircle, ArrowRight, Package, Sparkles } from "lucide-react";
 
 function ConfirmationContent() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get("order");
   const { clearCart } = useCart();
+  const [showAnimation, setShowAnimation] = useState(false);
 
   useEffect(() => {
     clearCart();
+    setShowAnimation(true);
   }, [clearCart]);
 
   return (
-    <div className="max-w-xl mx-auto px-4 py-20 text-center">
-      <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-        <CheckCircle2 className="w-8 h-8" />
+    <div className="max-w-xl mx-auto px-4 py-16 text-center">
+      {/* Celebratory Animated Payment Success Badge */}
+      <div className="relative w-24 h-24 mx-auto mb-6 flex items-center justify-center">
+        {showAnimation && (
+          <>
+            <div className="absolute inset-0 rounded-full bg-emerald-400/20 animate-ping duration-1000" />
+            <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-amber-400 text-amber-950 flex items-center justify-center animate-bounce shadow-md">
+              <Sparkles className="w-3.5 h-3.5" />
+            </div>
+          </>
+        )}
+        <div className="relative w-20 h-20 bg-gradient-to-br from-emerald-50 to-emerald-100 text-emerald-600 rounded-full flex items-center justify-center border-2 border-emerald-300 shadow-xl animate-in zoom-in-50 duration-500">
+          <CheckCircle2 className="w-10 h-10 animate-in spin-in-12 duration-700" />
+        </div>
       </div>
 
-      <h1 className="text-2xl font-bold text-slate-900">Thank You for Your Order!</h1>
+      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100/80 text-emerald-800 text-xs font-bold uppercase tracking-wider mb-3 animate-in fade-in slide-in-from-bottom-2 duration-400">
+        <Sparkles className="w-3 h-3 text-emerald-600" /> Payment Confirmed
+      </div>
+
+      <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+        Thank You for Your Order!
+      </h1>
       <p className="mt-3 text-sm text-slate-600 leading-relaxed">
-        Your payment is being confirmed via Paystack. Your official receipt and invoice are generated automatically and sent to your email.
+        Your payment is confirmed. Your official receipt and invoice are generated automatically and sent to your email.
       </p>
 
       {orderId && (

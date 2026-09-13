@@ -122,6 +122,170 @@ async function main() {
       image_urls: ["https://images.unsplash.com/photo-1615865417491-9941019fbc00?w=600&q=80"],
       is_active: true,
     },
+    // --- Sector 1: Jewelry & Accessories (Additional items) ---
+    {
+      sector_id: sectorMap.get("jewelry-accessories")!,
+      name: "Sparkling Crystal Tennis Bracelet",
+      slug: "sparkling-crystal-tennis-bracelet",
+      description: "Water-resistant sparkling cubic zirconia tennis bracelet with double safety clasp in 18K white gold finish.",
+      price_kobo: 1400000, // ₦14,000.00
+      stock_qty: 22,
+      image_urls: ["https://images.unsplash.com/photo-1611591475879-199616d2ca88?w=600&q=80"],
+      is_active: true,
+    },
+    {
+      sector_id: sectorMap.get("jewelry-accessories")!,
+      name: "Stainless Steel Herringbone Chain",
+      slug: "stainless-steel-herringbone-chain",
+      description: "Flat snake bone herringbone chain necklace, waterproof and anti-fade stainless steel.",
+      price_kobo: 1050000, // ₦10,500.00
+      stock_qty: 30,
+      image_urls: ["https://images.unsplash.com/photo-1599643477877-530eb83abc8e?w=600&q=80"],
+      is_active: true,
+    },
+    {
+      sector_id: sectorMap.get("jewelry-accessories")!,
+      name: "Stacked Minimalist Gold Rings Set",
+      slug: "stacked-minimalist-gold-rings-set",
+      description: "Set of 5 minimalist stackable knuckle and midi rings in lustrous gold finish.",
+      price_kobo: 650000, // ₦6,500.00
+      stock_qty: 45,
+      image_urls: ["https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=600&q=80"],
+      is_active: true,
+    },
+    {
+      sector_id: sectorMap.get("jewelry-accessories")!,
+      name: "Geometric Tortoiseshell Statement Earrings",
+      slug: "geometric-tortoiseshell-statement-earrings",
+      description: "Ultra-lightweight tortoiseshell and resin geometric drop earrings for stylish daily wear.",
+      price_kobo: 500000, // ₦5,000.00
+      stock_qty: 35,
+      image_urls: ["https://images.unsplash.com/photo-1630019852942-f89202989a59?w=600&q=80"],
+      is_active: true,
+    },
+    // --- Sector 2: Girly Essentials (Additional items) ---
+    {
+      sector_id: sectorMap.get("girly-essentials")!,
+      name: "Satin Silk Sleep Bonnet & Scrunchie Set",
+      slug: "satin-silk-sleep-bonnet-scrunchie-set",
+      description: "Double-layered reversible pure satin hair bonnet with matching jumbo scrunchie to protect curls.",
+      price_kobo: 550000, // ₦5,500.00
+      stock_qty: 60,
+      image_urls: ["https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600&q=80"],
+      is_active: true,
+    },
+    {
+      sector_id: sectorMap.get("girly-essentials")!,
+      name: "Rose Quartz Face Roller & Gua Sha Duo",
+      slug: "rose-quartz-face-roller-gua-sha-duo",
+      description: "100% natural rose quartz facial roller and sculpted gua sha scraping stone for lymphatic drainage.",
+      price_kobo: 800000, // ₦8,000.00
+      stock_qty: 25,
+      image_urls: ["https://images.unsplash.com/photo-1608248597358-1e428cf125c1?w=600&q=80"],
+      is_active: true,
+    },
+    {
+      sector_id: sectorMap.get("girly-essentials")!,
+      name: "Refillable Travel Perfume Atomizer",
+      slug: "refillable-travel-perfume-atomizer",
+      description: "Leak-proof 5ml bottom-pump refillable mini pocket perfume spray bottle for on-the-go touchups.",
+      price_kobo: 350000, // ₦3,500.00
+      stock_qty: 80,
+      image_urls: ["https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?w=600&q=80"],
+      is_active: true,
+    },
+    {
+      sector_id: sectorMap.get("girly-essentials")!,
+      name: "Coral Fleece Spa Headband & Wristbands",
+      slug: "coral-fleece-spa-headband-wristbands",
+      description: "Ultra-soft coral fleece bubble headband and wrist wash bands preventing water drips down arms.",
+      price_kobo: 420000, // ₦4,200.00
+      stock_qty: 50,
+      image_urls: ["https://images.unsplash.com/photo-1522337660859-02fbefca4702?w=600&q=80"],
+      is_active: true,
+    },
+    // --- Sector 3: Content Accessories (Additional items) ---
+    {
+      sector_id: sectorMap.get("content-accessories")!,
+      name: "Flexible All-Terrain Octopus Tripod with Remote",
+      slug: "flexible-octopus-tripod-remote",
+      description: "All-terrain bendable legs gorilla-style phone tripod with Bluetooth shutter remote.",
+      price_kobo: 1150000, // ₦11,500.00
+      stock_qty: 28,
+      image_urls: ["https://images.unsplash.com/photo-1584905066893-7d5c142ba4e1?w=600&q=80"],
+      is_active: true,
+    },
+    {
+      sector_id: sectorMap.get("content-accessories")!,
+      name: "Magnetic Wireless Fast Charging Car Mount",
+      slug: "magnetic-wireless-fast-charging-car-mount",
+      description: "Strong magnetic MagSafe dashboard & vent phone holder with fast induction charging.",
+      price_kobo: 1500000, // ₦15,000.00
+      stock_qty: 20,
+      image_urls: ["https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=600&q=80"],
+      is_active: true,
+    },
+    {
+      sector_id: sectorMap.get("content-accessories")!,
+      name: "Portable 360 RGB Pocket Video Light",
+      slug: "portable-360-rgb-pocket-video-light",
+      description: "Rechargeable 360-degree full-color mini LED video photography fill light with cold shoe mount.",
+      price_kobo: 1650000, // ₦16,500.00
+      stock_qty: 22,
+      image_urls: ["https://images.unsplash.com/photo-1516962215378-7fa2e137ae93?w=600&q=80"],
+      is_active: true,
+    },
+    {
+      sector_id: sectorMap.get("content-accessories")!,
+      name: "Dual Type-C and Lightning Audio Splitter",
+      slug: "dual-type-c-lightning-audio-splitter",
+      description: "High-fidelity braided USB-C and Lightning audio splitter with 3.5mm jack for collaborative listening.",
+      price_kobo: 480000, // ₦4,800.00
+      stock_qty: 40,
+      image_urls: ["https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=600&q=80"],
+      is_active: true,
+    },
+    // --- Sector 4: Kitchen/Souvenirs (Additional items) ---
+    {
+      sector_id: sectorMap.get("kitchen-souvenirs")!,
+      name: "Matte Black Double-Wall Thermal Flask 750ml",
+      slug: "matte-black-double-wall-thermal-flask-750ml",
+      description: "Double-wall insulated 750ml vacuum thermos keeping water icy cold for 24h or hot for 12h.",
+      price_kobo: 950000, // ₦9,500.00
+      stock_qty: 35,
+      image_urls: ["https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=600&q=80"],
+      is_active: true,
+    },
+    {
+      sector_id: sectorMap.get("kitchen-souvenirs")!,
+      name: "Organic Soy Wax Scented Candle Gift Jar",
+      slug: "organic-soy-wax-scented-candle-gift-jar",
+      description: "Hand-poured organic soy wax candle scented with French vanilla and lavender in amber glass.",
+      price_kobo: 750000, // ₦7,500.00
+      stock_qty: 40,
+      image_urls: ["https://images.unsplash.com/photo-1603006905003-be475563bc59?w=600&q=80"],
+      is_active: true,
+    },
+    {
+      sector_id: sectorMap.get("kitchen-souvenirs")!,
+      name: "12-Piece Non-Scratch Silicone Utensil Set",
+      slug: "12-piece-non-scratch-silicone-utensil-set",
+      description: "12-piece non-scratch wooden handle cooking utensils set with matching countertop crock.",
+      price_kobo: 1750000, // ₦17,500.00
+      stock_qty: 15,
+      image_urls: ["https://images.unsplash.com/photo-1590794056226-79ef3a8147e1?w=600&q=80"],
+      is_active: true,
+    },
+    {
+      sector_id: sectorMap.get("kitchen-souvenirs")!,
+      name: "Acacia Wood Engraved Coaster Set (6-Pack)",
+      slug: "acacia-wood-engraved-coaster-set-6pack",
+      description: "Pack of 6 laser-carved natural cork & acacia wood drink coasters with souvenir gift ribbon.",
+      price_kobo: 550000, // ₦5,500.00
+      stock_qty: 50,
+      image_urls: ["https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?w=600&q=80"],
+      is_active: true,
+    },
   ];
 
   for (const p of productsData) {

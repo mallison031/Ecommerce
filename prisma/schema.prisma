@@ -109,6 +109,7 @@ model Customer {
   name                String
   phone               String
   email               String   @unique
+  password_hash       String?
   whatsapp_opt_in     Boolean           @default(false)
   whatsapp_phone_e164 String?
   loyalty_points      Int               @default(0)

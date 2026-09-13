@@ -60,6 +60,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [items, isInitialized]);
 
+  const [lastAddedToast, setLastAddedToast] = useState<{
+    name: string;
+    imageUrl?: string;
+    qty: number;
+  } | null>(null);
+
   const addItem = (product: Omit<CartItem, "quantity">, qty = 1) => {
     const key = getItemKey(product);
     setItems((prev) => {
@@ -73,7 +79,23 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
       return [...prev, { ...product, itemKey: key, quantity: qty }];
     });
+
+    // Trigger cart addition notification with smooth pop animation
+    setLastAddedToast({
+      name: product.name,
+      imageUrl: product.imageUrl,
+      qty,
+    });
   };
+
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (!lastAddedToast) return;
+    const timer = setTimeout(() => {
+      setLastAddedToast(null);
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, [lastAddedToast]);
 
   const removeItem = (itemKeyOrProductId: string) => {
     setItems((prev) =>
@@ -123,6 +145,49 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }}
     >
       {children}
+
+      {/* Floating Animated Cart Addition Notification */}
+      {lastAddedToast && (
+        <div className="fixed bottom-5 right-5 z-50 max-w-sm w-full animate-in fade-in slide-in-from-bottom-5 duration-300 pointer-events-auto">
+          <div className="bg-slate-900/95 backdrop-blur-md text-white px-4 py-3 rounded-2xl shadow-2xl border border-slate-800 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0 animate-bounce">
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2.5}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <div className="text-xs truncate">
+                <p className="font-bold text-slate-100 truncate">Added to Cart!</p>
+                <p className="text-slate-400 text-[11px] truncate">
+                  {lastAddedToast.qty}x {lastAddedToast.name}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <a
+                href="/cart"
+                className="px-3 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-[11px] font-bold text-white transition-transform active:scale-95 shadow-sm"
+              >
+                View Cart
+              </a>
+              <button
+                type="button"
+                onClick={() => setLastAddedToast(null)}
+                className="text-slate-400 hover:text-white text-xs p-1"
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </CartContext.Provider>
   );
 }
