@@ -33,11 +33,6 @@ export default function RootLayout({
             {/* Real-time Flash Sale Countdown Ticker */}
             <FlashSaleBanner />
 
-            {/* Top Announcement Bar */}
-            <div className="bg-slate-900 text-white text-xs font-medium py-2 text-center px-4">
-              🚀 Fast delivery across Lagos & nationwide | Instant checkout via Paystack
-            </div>
-
             {/* Navigation Bar */}
             <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200">
               <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2 sm:gap-4">
@@ -102,6 +97,11 @@ export default function RootLayout({
 
             {/* Main Content Area */}
             <main className="flex-1">{children}</main>
+
+            {/* Fast Delivery & Trust Banner Down the Page */}
+            <div className="bg-slate-900 text-white text-xs font-medium py-3 text-center px-4">
+              🚀 Fast delivery across Lagos & nationwide | Instant checkout via Paystack
+            </div>
 
           {/* Footer */}
           <footer className="bg-white border-t border-slate-200 py-12">
