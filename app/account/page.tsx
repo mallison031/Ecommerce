@@ -493,15 +493,16 @@ function AccountPortalContent() {
           )}
 
           {/* Auth Method Selector Tabs */}
-          <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-2xl text-xs font-bold text-slate-600">
+          <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-2xl text-xs font-bold text-slate-600">
             <button
               type="button"
               onClick={() => {
                 setAuthMode("login");
+                setAuthStep("email");
                 setAuthError(null);
                 setAuthSuccessMessage(null);
               }}
-              className={`py-2 px-2 rounded-xl transition-all text-center ${
+              className={`py-2 px-3 rounded-xl transition-all text-center ${
                 authMode === "login"
                   ? "bg-white text-slate-900 shadow-xs font-black"
                   : "hover:text-slate-900"
@@ -516,28 +517,13 @@ function AccountPortalContent() {
                 setAuthError(null);
                 setAuthSuccessMessage(null);
               }}
-              className={`py-2 px-2 rounded-xl transition-all text-center ${
+              className={`py-2 px-3 rounded-xl transition-all text-center ${
                 authMode === "register"
                   ? "bg-white text-slate-900 shadow-xs font-black"
                   : "hover:text-slate-900"
               }`}
             >
               Register
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMode("otp");
-                setAuthError(null);
-                setAuthSuccessMessage(null);
-              }}
-              className={`py-2 px-2 rounded-xl transition-all text-center ${
-                authMode === "otp"
-                  ? "bg-white text-slate-900 shadow-xs font-black"
-                  : "hover:text-slate-900"
-              }`}
-            >
-              One-Time OTP
             </button>
           </div>
 

@@ -70,3 +70,8 @@ Read PRD.md, architecture.md, and architecture-essentials.md before making struc
 - TypeScript strict mode on.
 - Prisma migrations committed with every schema change — never hand-edit the database in a deployed environment.
 - No new top-level services/deployables without updating architecture.md first.
+
+## Workflow & Execution Rules
+- **PR Lifecycle**: When a PR is merged into `main`, never update its description or push new tasks to the merged PR. Always pull latest `main`, branch anew (`feat/...` or `fix/...`), commit, push, and open a brand new PR.
+- **Multi-Task To-Do Invariant**: When given multiple tasks, immediately construct and present a to-do checklist before writing code, then tick each item off sequentially as it is completed.
+

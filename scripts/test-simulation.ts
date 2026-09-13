@@ -449,7 +449,7 @@ async function runTests() {
   });
   assert(lekkiCalcRes.status === 200, "Lekki/Ajah shipping calculation returns HTTP 200");
   const lekkiCalc = await lekkiCalcRes.json();
-  assert(lekkiCalc.shippingFeeKobo === 300000, "Lekki/Ajah base fee is ₦3,000");
+  assert(lekkiCalc.shippingFeeKobo === 600000, "Lagos delivery fee is fixed at ₦6,000");
 
   // Test Lagos Mainland calculation
   const lagosMainlandCalcRes = await fetch(`${BASE_URL}/api/shipping/calculate`, {
@@ -459,7 +459,7 @@ async function runTests() {
   });
   assert(lagosMainlandCalcRes.status === 200, "Lagos Mainland shipping calculation returns HTTP 200");
   const lagosMainlandCalc = await lagosMainlandCalcRes.json();
-  assert(lagosMainlandCalc.shippingFeeKobo === 200000, "Lagos Mainland base fee is ₦2,000");
+  assert(lagosMainlandCalc.shippingFeeKobo === 600000, "Lagos Mainland fee is fixed at ₦6,000");
   assert(lagosMainlandCalc.isFreeDelivery === false, "Subtotal under ₦50k does not qualify for free delivery");
 
   // Test Interstate Abuja calculation
@@ -501,8 +501,8 @@ async function runTests() {
   });
   assert(shippingCheckoutRes.status === 200, "Checkout with dynamic shipping returns HTTP 200");
   const shippingCheckoutData = await shippingCheckoutRes.json();
-  assert(shippingCheckoutData.shippingFeeKobo === 700000, "Shipping fee includes Island base (₦2,500) + Express (₦4,500)");
-  assert(shippingCheckoutData.totalKobo === product.price_kobo + 700000, "Order total correctly includes item price and shipping fee");
+  assert(shippingCheckoutData.shippingFeeKobo === 1050000, "Shipping fee includes fixed Lagos (₦6,000) + Express (₦4,500)");
+  assert(shippingCheckoutData.totalKobo === product.price_kobo + 1050000, "Order total correctly includes item price and shipping fee");
   console.log();
 
   // --- TEST 13: Promotions, Discount Coupons & Sector Flash Sales Engine ---
@@ -602,7 +602,7 @@ async function runTests() {
   const expectedDiscount = Math.round((product.price_kobo * 10) / 100);
   assert(couponCheckoutData.couponCode === "WELCOME10", "Order confirms WELCOME10 coupon applied");
   assert(couponCheckoutData.couponDiscountKobo === expectedDiscount, "Order confirms 10% coupon discount applied to total");
-  assert(couponCheckoutData.totalKobo === (product.price_kobo - expectedDiscount) + 250000, "Final order total reflects product price minus coupon discount plus shipping");
+  assert(couponCheckoutData.totalKobo === (product.price_kobo - expectedDiscount) + 600000, "Final order total reflects product price minus coupon discount plus fixed ₦6k Lagos shipping");
   console.log();
 
   // --- TEST 14: Customer Product Reviews, Star Ratings & Photo UGC Engine ---
@@ -2372,6 +2372,9 @@ async function runTests() {
   // 1. Setup eligible customers for Win-Back, Replenishment, and VIP Milestones
   const nowTime = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
+
+  // Ensure campaign settings are active for the test suite run
+  await prisma.marketingCampaignSetting.updateMany({ data: { is_active: true } });
 
   // Win-back customer (order placed 65 days ago)
   const winbackCustomerEmail = `winback.${nowTime}@test.com`;

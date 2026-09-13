@@ -51,53 +51,55 @@ export const NIGERIAN_STATES = [
 
 export type NigerianState = (typeof NIGERIAN_STATES)[number];
 
+export const FIXED_LAGOS_DELIVERY_FEE_KOBO = 600000; // ₦6,000.00 fixed delivery across Lagos
+
 export const LAGOS_ZONES = [
   {
     code: "lagos_mainland",
     name: "Lagos Mainland Central (Ikeja, Maryland, Yaba, Surulere, Gbagada, Anthony, Ilupeju)",
-    feeKobo: 200000,
+    feeKobo: 600000,
     sla: "Same-Day / 24 Hours",
   },
   {
     code: "lagos_island",
     name: "Lagos Island, VI & Ikoyi (Victoria Island, Ikoyi, Lagos Island, Oniru)",
-    feeKobo: 250000,
+    feeKobo: 600000,
     sla: "Same-Day / 24 Hours",
   },
   {
     code: "lagos_lekki_ajah",
     name: "Lekki Phase 1, Chevron, VGC & Ajah Axis",
-    feeKobo: 300000,
+    feeKobo: 600000,
     sla: "Next-Day / 24 Hours",
   },
   {
     code: "lagos_outer_mainland",
     name: "Outer Mainland & Berger (Agege, Ogba, Magodo, Alausa, Ojodu-Berger, Ketu, Ojota)",
-    feeKobo: 250000,
+    feeKobo: 600000,
     sla: "Same-Day / 24 Hours",
   },
   {
     code: "lagos_west_festac",
     name: "Lagos West & Alimosho (Festac, Mile 2, Amuwo Odofin, Egbeda, Iyana Ipaja, Ikotun)",
-    feeKobo: 300000,
+    feeKobo: 600000,
     sla: "1–2 Business Days",
   },
   {
     code: "lagos_sangotedo_epe",
     name: "Sangotedo, Awoyaya, Lakowe, Ibeju-Lekki & Epe",
-    feeKobo: 400000,
+    feeKobo: 600000,
     sla: "1–2 Business Days",
   },
   {
     code: "lagos_ikorodu",
     name: "Ikorodu Axis (Ikorodu Town, Agric, Ogolonto, Ebute, Ijede)",
-    feeKobo: 350000,
+    feeKobo: 600000,
     sla: "1–2 Business Days",
   },
   {
     code: "lagos_ojo_badagry",
     name: "Ojo, LASU, Okokomaiko, Trade Fair & Badagry",
-    feeKobo: 400000,
+    feeKobo: 600000,
     sla: "1–2 Business Days",
   },
 ] as const;
@@ -108,56 +110,56 @@ export const REGIONAL_SHIPPING_ZONES: ShippingZone[] = [
   {
     code: "lagos_mainland",
     name: "Lagos Mainland Central",
-    baseFeeKobo: 200000, // ₦2,000
+    baseFeeKobo: 600000, // ₦6,000 (Fixed Lagos delivery)
     deliverySla: "Same-Day / 24 Hours",
     states: ["Lagos"],
   },
   {
     code: "lagos_island",
     name: "Lagos Island, VI & Ikoyi",
-    baseFeeKobo: 250000, // ₦2,500
+    baseFeeKobo: 600000, // ₦6,000 (Fixed Lagos delivery)
     deliverySla: "Same-Day / 24 Hours",
     states: ["Lagos"],
   },
   {
     code: "lagos_lekki_ajah",
     name: "Lekki & Ajah Axis",
-    baseFeeKobo: 300000, // ₦3,000
+    baseFeeKobo: 600000, // ₦6,000 (Fixed Lagos delivery)
     deliverySla: "Next-Day / 24 Hours",
     states: ["Lagos"],
   },
   {
     code: "lagos_outer_mainland",
     name: "Outer Mainland & Berger",
-    baseFeeKobo: 250000, // ₦2,500
+    baseFeeKobo: 600000, // ₦6,000 (Fixed Lagos delivery)
     deliverySla: "Same-Day / 24 Hours",
     states: ["Lagos"],
   },
   {
     code: "lagos_west_festac",
     name: "Lagos West & Alimosho",
-    baseFeeKobo: 300000, // ₦3,000
+    baseFeeKobo: 600000, // ₦6,000 (Fixed Lagos delivery)
     deliverySla: "1–2 Business Days",
     states: ["Lagos"],
   },
   {
     code: "lagos_sangotedo_epe",
     name: "Ibeju-Lekki & Epe",
-    baseFeeKobo: 400000, // ₦4,000
+    baseFeeKobo: 600000, // ₦6,000 (Fixed Lagos delivery)
     deliverySla: "1–2 Business Days",
     states: ["Lagos"],
   },
   {
     code: "lagos_ikorodu",
     name: "Ikorodu Axis",
-    baseFeeKobo: 350000, // ₦3,500
+    baseFeeKobo: 600000, // ₦6,000 (Fixed Lagos delivery)
     deliverySla: "1–2 Business Days",
     states: ["Lagos"],
   },
   {
     code: "lagos_ojo_badagry",
     name: "Ojo & Badagry Axis",
-    baseFeeKobo: 400000, // ₦4,000
+    baseFeeKobo: 600000, // ₦6,000 (Fixed Lagos delivery)
     deliverySla: "1–2 Business Days",
     states: ["Lagos"],
   },

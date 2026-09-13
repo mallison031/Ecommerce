@@ -130,7 +130,7 @@ async function main() {
       description: "Water-resistant sparkling cubic zirconia tennis bracelet with double safety clasp in 18K white gold finish.",
       price_kobo: 1400000, // ₦14,000.00
       stock_qty: 22,
-      image_urls: ["https://images.unsplash.com/photo-1611591475879-199616d2ca88?w=600&q=80"],
+      image_urls: ["https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?w=600&q=80"],
       is_active: true,
     },
     {
@@ -181,7 +181,7 @@ async function main() {
       description: "100% natural rose quartz facial roller and sculpted gua sha scraping stone for lymphatic drainage.",
       price_kobo: 800000, // ₦8,000.00
       stock_qty: 25,
-      image_urls: ["https://images.unsplash.com/photo-1608248597358-1e428cf125c1?w=600&q=80"],
+      image_urls: ["https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?w=600&q=80"],
       is_active: true,
     },
     {
