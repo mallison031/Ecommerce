@@ -124,11 +124,17 @@ model Customer {
   loyalty_ledger      LoyaltyPointsLedger[]
   wallet_transactions WalletTransaction[]
   watchlists          ProductWatchlist[]
+  marketing_emails_opt_in   Boolean   @default(true)
+  marketing_whatsapp_opt_in Boolean   @default(false)
+  replenishment_opt_in      Boolean   @default(true)
+  unsubscribe_token         String?   @unique
+  campaign_logs             MarketingCampaignLog[]
   created_at          DateTime          @default(now())
   updated_at          DateTime          @updatedAt
 
   @@index([email])
   @@index([referral_code])
+  @@index([unsubscribe_token])
   @@index([whatsapp_phone_e164])
 }
 
@@ -621,5 +627,42 @@ model WalletTransaction {
   @@index([type])
   @@index([created_at])
 }
+
+model MarketingCampaignSetting {
+  id                  String              @id @default(cuid())
+  type                String              @unique // WIN_BACK_60D, REPLENISHMENT_30D, VIP_SPEND_MILESTONE, BROWSE_ABANDONMENT
+  name                String
+  description         String
+  is_active           Boolean             @default(true)
+  delay_days          Int                 @default(30)
+  discount_percentage Int                 @default(10)
+  channel             NotificationChannel @default(email)
+  created_at          DateTime            @default(now())
+  updated_at          DateTime            @updatedAt
+}
+
+model MarketingCampaignLog {
+  id               String              @id @default(cuid())
+  campaign_type    String
+  customer_id      String
+  customer         Customer            @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  channel          NotificationChannel @default(email)
+  recipient_email  String
+  recipient_phone  String?
+  discount_code    String?
+  subject          String
+  content_snippet  String?
+  status           NotificationStatus  @default(sent)
+  opened_at        DateTime?
+  converted_at     DateTime?
+  order_id         String?
+  created_at       DateTime            @default(now())
+
+  @@index([customer_id])
+  @@index([campaign_type])
+  @@index([created_at])
+  @@index([discount_code])
+}
+
 
 
