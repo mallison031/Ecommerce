@@ -2373,6 +2373,9 @@ async function runTests() {
   const nowTime = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
 
+  // Ensure campaign settings are active for the test suite run
+  await prisma.marketingCampaignSetting.updateMany({ data: { is_active: true } });
+
   // Win-back customer (order placed 65 days ago)
   const winbackCustomerEmail = `winback.${nowTime}@test.com`;
   const winbackCustomer = await prisma.customer.create({
