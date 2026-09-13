@@ -4,8 +4,9 @@ import Link from "next/link";
 import { formatKoboToNaira } from "@/lib/utils";
 import { useCart } from "@/context/cart-context";
 import { useWishlist } from "@/context/wishlist-context";
-import { ShoppingBag, Check, Heart } from "lucide-react";
+import { ShoppingBag, Check, Heart, Scale } from "lucide-react";
 import { useState } from "react";
+import { useCompareStore } from "@/lib/stores/compare-store";
 
 export interface ProductData {
   id: string;
@@ -27,12 +28,14 @@ export function ProductCard({
 }) {
   const { addItem } = useCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
+  const { isInCompare, addItem: addCompareItem, removeItem: removeCompareItem } = useCompareStore();
   const [added, setAdded] = useState(false);
 
   const effectiveSectorSlug = sectorSlug || product.sector_slug || "products";
   const productHref = `/${effectiveSectorSlug}/${product.slug}`;
   const isOutOfStock = product.stock_qty <= 0;
   const inWishlist = isInWishlist(product.id);
+  const inCompare = isInCompare(product.id);
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -60,6 +63,26 @@ export function ProductCard({
       sectorSlug: effectiveSectorSlug,
       inStock: !isOutOfStock,
     });
+  };
+
+  const handleToggleCompare = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (inCompare) {
+      removeCompareItem(product.id);
+    } else {
+      addCompareItem({
+        id: product.id,
+        name: product.name,
+        slug: product.slug,
+        sector_slug: effectiveSectorSlug,
+        price_kobo: product.price_kobo,
+        image_url: product.image_urls[0] || "",
+        stock_qty: product.stock_qty,
+        supports_engraving: (product as any).supports_engraving || false,
+        description: product.description,
+      });
+    }
   };
 
   return (
@@ -102,6 +125,21 @@ export function ProductCard({
           title={inWishlist ? "Saved in Wishlist" : "Save to Wishlist"}
         >
           <Heart className={`w-4 h-4 ${inWishlist ? "fill-rose-500 text-rose-500 animate-in zoom-in-50" : ""}`} />
+        </button>
+
+        {/* Floating Compare Button */}
+        <button
+          type="button"
+          onClick={handleToggleCompare}
+          className={`absolute top-12 right-2.5 z-10 w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-sm ${
+            inCompare
+              ? "bg-pink-600 text-white hover:bg-pink-700 hover:scale-110"
+              : "bg-white/90 text-slate-400 hover:text-pink-600 hover:bg-white hover:scale-110"
+          }`}
+          aria-label={inCompare ? "Remove from comparison" : "Add to comparison"}
+          title={inCompare ? "In Comparison Tray" : "Compare Product"}
+        >
+          <Scale className="w-4 h-4" />
         </button>
       </div>
 

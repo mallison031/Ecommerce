@@ -7,14 +7,17 @@ export const SESSION_EXPIRY_DAYS = 30;
 
 export async function getAuthenticatedCustomer(req: NextRequest) {
   try {
-    // 1. Check cookie
-    let token = req.cookies.get(CUSTOMER_SESSION_COOKIE)?.value;
+    // 1. Check cookies (supports aura_customer_session, customer_session, customer_token)
+    let token =
+      req.cookies.get(CUSTOMER_SESSION_COOKIE)?.value ||
+      req.cookies.get("customer_session")?.value ||
+      req.cookies.get("customer_token")?.value;
 
     // 2. Check Authorization header fallback (e.g. Bearer <token>)
     if (!token) {
-      const authHeader = req.headers.get("authorization");
-      if (authHeader && authHeader.startsWith("Bearer ")) {
-        token = authHeader.substring(7).trim();
+      const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+      if (authHeader) {
+        token = authHeader.replace(/^Bearer\s+/i, "").trim();
       }
     }
 

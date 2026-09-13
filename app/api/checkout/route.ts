@@ -16,6 +16,7 @@ const checkoutSchema = z.object({
   isExpress: z.boolean().optional().default(false),
   couponCode: z.string().optional(),
   giftCardCode: z.string().optional(),
+  useWalletBalance: z.boolean().optional().default(false),
   whatsappOptIn: z.boolean().default(false),
   items: z
     .array(
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest) {
       isExpress,
       couponCode,
       giftCardCode,
+      useWalletBalance,
       whatsappOptIn,
       items,
     } = parsed.data;
@@ -185,8 +187,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const finalTotalKobo = Math.max(0, orderTotalBeforeGiftCard - giftCardDeductionKobo);
-
     // Format phone to E.164 if WhatsApp opted in
     const formattedPhone = whatsappOptIn ? formatToE164(phone) : null;
 
@@ -208,22 +208,33 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Calculate deductions
+    const orderTotalAfterGiftCard = Math.max(0, orderTotalBeforeGiftCard - giftCardDeductionKobo);
+
+    let walletDeductionKobo = 0;
+    if (useWalletBalance && customer.wallet_balance_kobo > 0 && orderTotalAfterGiftCard > 0) {
+      walletDeductionKobo = Math.min(customer.wallet_balance_kobo, orderTotalAfterGiftCard);
+    }
+
+    const finalTotalKobo = Math.max(0, orderTotalAfterGiftCard - walletDeductionKobo);
+
     const fullAddress = state
       ? `${deliveryAddress} (${state}${state.toLowerCase() === "lagos" && lagosZone ? `, ${lagosZone === "lagos_island" ? "Island" : "Mainland"}` : ""})`
       : deliveryAddress;
 
     // Create Order with appropriate status
-    const isFullGiftCardPayment = finalTotalKobo === 0 && giftCardDeductionKobo > 0;
+    const isZeroTotalPayment = finalTotalKobo === 0 && (giftCardDeductionKobo > 0 || walletDeductionKobo > 0);
     const order = await prisma.order.create({
       data: {
         customer_id: customer.id,
-        status: isFullGiftCardPayment ? "paid" : "pending_payment",
+        status: isZeroTotalPayment ? "paid" : "pending_payment",
         subtotal_kobo: subtotalKobo,
         total_kobo: finalTotalKobo,
         gift_card_discount_kobo: giftCardDeductionKobo,
+        wallet_discount_kobo: walletDeductionKobo,
         currency: "NGN",
         delivery_address: fullAddress,
-        paid_at: isFullGiftCardPayment ? new Date() : null,
+        paid_at: isZeroTotalPayment ? new Date() : null,
         items: {
           create: orderItemsData,
         },
@@ -249,14 +260,39 @@ export async function POST(req: NextRequest) {
       ]);
     }
 
+    // Record customer wallet deduction & ledger transaction if applied
+    if (walletDeductionKobo > 0) {
+      await prisma.$transaction([
+        prisma.customer.update({
+          where: { id: customer.id },
+          data: {
+            wallet_balance_kobo: { decrement: walletDeductionKobo },
+          },
+        }),
+        prisma.walletTransaction.create({
+          data: {
+            customer_id: customer.id,
+            order_id: order.id,
+            type: "ORDER_PAYMENT",
+            amount_kobo: -walletDeductionKobo,
+            balance_after_kobo: customer.wallet_balance_kobo - walletDeductionKobo,
+            description: `Payment for Order #${order.order_number}`,
+            reference: order.id,
+          },
+        }),
+      ]);
+    }
+
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const callbackUrl = `${appUrl}/order-confirmation?order=${order.id}`;
 
-    // If fully covered by gift card, return success directly without Paystack redirect
-    if (isFullGiftCardPayment) {
+    // If fully covered by gift card and/or wallet, return success directly without Paystack redirect
+    if (isZeroTotalPayment) {
       return NextResponse.json({
         success: true,
-        paidWithGiftCard: true,
+        paidWithStoreCredit: true,
+        paidWithGiftCard: giftCardDeductionKobo > 0,
+        paidWithWallet: walletDeductionKobo > 0,
         authorizationUrl: callbackUrl,
         orderNumber: order.order_number,
         orderId: order.id,
@@ -265,6 +301,7 @@ export async function POST(req: NextRequest) {
         couponDiscountKobo,
         giftCardCode: validatedGiftCard?.code,
         giftCardDeductionKobo,
+        walletDeductionKobo,
         shippingFeeKobo,
         totalKobo: 0,
         deliverySla,
@@ -288,6 +325,7 @@ export async function POST(req: NextRequest) {
         couponDiscountKobo,
         giftCardCode: validatedGiftCard?.code,
         giftCardDeductionKobo,
+        walletDeductionKobo,
         shippingFeeKobo,
         isFreeDelivery,
         deliverySla,
@@ -305,6 +343,7 @@ export async function POST(req: NextRequest) {
       couponDiscountKobo,
       giftCardCode: validatedGiftCard?.code,
       giftCardDeductionKobo,
+      walletDeductionKobo,
       shippingFeeKobo,
       totalKobo: finalTotalKobo,
       deliverySla,

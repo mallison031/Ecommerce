@@ -17,6 +17,8 @@ export function formatKoboToNaira(kobo: number): string {
   }).format(naira);
 }
 
+export const formatNaira = formatKoboToNaira;
+
 /**
  * Clean and format a local Nigerian phone number into standard E.164 (+234...)
  */
