@@ -50,6 +50,7 @@ import { AdminFlashSalesTab } from "@/components/admin/admin-flash-sales-tab";
 import { AdminGiftCardsTab } from "@/components/admin/admin-gift-cards-tab";
 import { AdminQnATab } from "@/components/admin/admin-qna-tab";
 import { AdminWatchlistTab } from "@/components/admin/admin-watchlist-tab";
+import { AdminMarketingTab } from "@/components/admin/admin-marketing-tab";
 import AdminLiveFeedBanner from "@/components/admin/admin-live-feed-banner";
 import DailySettlementModal from "@/components/admin/daily-settlement-modal";
 import { AdminNotificationCenter } from "@/components/admin-notification-center";
@@ -157,6 +158,7 @@ export default function AdminDashboardPage() {
     | "gift-cards"
     | "qna"
     | "watchlist"
+    | "marketing"
   >("orders");
   const [orders, setOrders] = useState<Order[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
@@ -1118,6 +1120,16 @@ export default function AdminDashboardPage() {
           }`}
         >
           <Bell className="w-4 h-4 text-amber-600" /> Watchlist Demand
+        </button>
+        <button
+          onClick={() => setActiveTab("marketing")}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "marketing"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-400 hover:text-slate-700"
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-purple-600" /> Marketing Drips
         </button>
       </div>
 
@@ -3035,6 +3047,9 @@ export default function AdminDashboardPage() {
 
       {/* Demand Intelligence & Watchlist Tab */}
       {activeTab === "watchlist" && <AdminWatchlistTab />}
+
+      {/* Lifecycle Marketing & Retention Automation Tab */}
+      {activeTab === "marketing" && <AdminMarketingTab />}
 
       {/* QUICK RESTOCK / ADJUSTMENT MODAL */}
       {restockingProduct && (

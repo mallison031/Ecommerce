@@ -38,6 +38,7 @@ import {
   Award,
   Wallet,
   TrendingDown,
+  Sliders,
 } from "lucide-react";
 import { formatKoboToNaira } from "@/lib/utils";
 import { useCart } from "@/context/cart-context";
@@ -47,6 +48,7 @@ import CustomerLoyaltyCard from "@/components/customer-loyalty-card";
 import { CustomerReferralCard } from "@/components/customer-referral-card";
 import { CustomerWalletTab } from "@/components/customer-wallet-tab";
 import { CustomerWatchlistTab } from "@/components/customer-watchlist-tab";
+import { CustomerPreferencesTab } from "@/components/customer-preferences-tab";
 
 const NIGERIAN_STATES = [
   "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno",
@@ -119,10 +121,18 @@ function AccountPortalContent() {
   });
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<"orders" | "wallet" | "watchlist" | "loyalty" | "returns" | "addresses" | "saved" | "settings">("orders");
+  const [activeTab, setActiveTab] = useState<"orders" | "wallet" | "watchlist" | "loyalty" | "returns" | "addresses" | "saved" | "settings" | "preferences">("orders");
   const [returnRequests, setReturnRequests] = useState<any[]>([]);
   const [returnModalOrder, setReturnModalOrder] = useState<Order | null>(null);
   const [returnBanner, setReturnBanner] = useState<string | null>(null);
+
+  // Sync tab from URL if present
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab && ["orders", "wallet", "watchlist", "loyalty", "returns", "addresses", "saved", "settings", "preferences"].includes(tab)) {
+      setActiveTab(tab as any);
+    }
+  }, [searchParams]);
 
   // Sign-in Form State
   const [authStep, setAuthStep] = useState<"email" | "otp">("email");
@@ -778,7 +788,19 @@ function AccountPortalContent() {
               : "border-transparent text-slate-500 hover:text-slate-900"
           }`}
         >
-          <Settings className="w-4 h-4" /> Profile & Notification Preferences
+          <Settings className="w-4 h-4" /> Profile Details
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("preferences")}
+          className={`flex items-center gap-2 py-3 px-4 border-b-2 transition-all shrink-0 ${
+            activeTab === "preferences"
+              ? "border-pink-600 text-pink-600"
+              : "border-transparent text-slate-500 hover:text-slate-900"
+          }`}
+        >
+          <Sliders className="w-4 h-4" /> Marketing & Preferences
         </button>
       </div>
 
@@ -1292,6 +1314,13 @@ function AccountPortalContent() {
       ========================================== */}
       {activeTab === "watchlist" && (
         <CustomerWatchlistTab />
+      )}
+
+      {/* ==========================================
+          TAB 9: COMMUNICATION & MARKETING PREFERENCES
+      ========================================== */}
+      {activeTab === "preferences" && (
+        <CustomerPreferencesTab />
       )}
 
       {/* ==========================================

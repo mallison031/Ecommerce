@@ -2364,6 +2364,265 @@ async function runTests() {
   assert(walletTx!.amount_kobo < 0, "Wallet deduction transaction amount is negative debit");
   console.log();
 
+  // =========================================================================
+  // TEST 37: Lifecycle Marketing Drips & Triggers Cron Engine (Milestone 22 - Module 1)
+  // =========================================================================
+  console.log("--- TEST 37: Lifecycle Marketing Drips & Triggers Cron Engine ---");
+
+  // 1. Setup eligible customers for Win-Back, Replenishment, and VIP Milestones
+  const nowTime = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+
+  // Win-back customer (order placed 65 days ago)
+  const winbackCustomerEmail = `winback.${nowTime}@test.com`;
+  const winbackCustomer = await prisma.customer.create({
+    data: {
+      name: "Lapsed Customer",
+      email: winbackCustomerEmail,
+      phone: "+2348011998877",
+      marketing_emails_opt_in: true,
+      replenishment_opt_in: true,
+    },
+  });
+
+  await prisma.order.create({
+    data: {
+      customer_id: winbackCustomer.id,
+      status: "delivered",
+      subtotal_kobo: 3000000,
+      total_kobo: 3000000,
+      delivery_address: "Lekki Phase 1, Lagos",
+      created_at: new Date(nowTime - 65 * dayMs),
+      updated_at: new Date(nowTime - 65 * dayMs),
+    },
+  });
+
+  // VIP Milestone customer (single large order of ₦150,000 / 15,000,000 kobo)
+  const vipCustomerEmail = `vip.${nowTime}@test.com`;
+  const vipCustomer = await prisma.customer.create({
+    data: {
+      name: "High Value VIP",
+      email: vipCustomerEmail,
+      phone: "+2348022998877",
+      marketing_emails_opt_in: true,
+      replenishment_opt_in: true,
+    },
+  });
+
+  await prisma.order.create({
+    data: {
+      customer_id: vipCustomer.id,
+      status: "paid",
+      subtotal_kobo: 15000000,
+      total_kobo: 15000000,
+      delivery_address: "Ikoyi, Lagos",
+      created_at: new Date(nowTime - 2 * dayMs),
+      updated_at: new Date(nowTime - 2 * dayMs),
+    },
+  });
+
+  // Replenishment customer (order placed 35 days ago)
+  const replenishCustomerEmail = `replenish.${nowTime}@test.com`;
+  const replenishCustomer = await prisma.customer.create({
+    data: {
+      name: "Replenish Patron",
+      email: replenishCustomerEmail,
+      phone: "+2348033998877",
+      marketing_emails_opt_in: true,
+      replenishment_opt_in: true,
+    },
+  });
+
+  await prisma.order.create({
+    data: {
+      customer_id: replenishCustomer.id,
+      status: "delivered",
+      subtotal_kobo: 4500000,
+      total_kobo: 4500000,
+      delivery_address: "Victoria Island, Lagos",
+      delivered_at: new Date(nowTime - 35 * dayMs),
+      created_at: new Date(nowTime - 35 * dayMs),
+      updated_at: new Date(nowTime - 35 * dayMs),
+    },
+  });
+
+  // 2. Trigger Cron Run
+  const dripsCronRes = await fetch(`${BASE_URL}/api/cron/marketing-drips`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.CRON_SECRET || "development-cron-secret"}`,
+    },
+  });
+  assert(dripsCronRes.status === 200, "POST /api/cron/marketing-drips returns HTTP 200");
+  const dripsCronData = await dripsCronRes.json();
+  assert(dripsCronData.success === true, "Cron job executed successfully");
+  assert(dripsCronData.processed.win_back >= 1, "At least 1 win-back drip processed");
+  assert(dripsCronData.processed.replenishment >= 1, "At least 1 replenishment drip processed");
+  assert(dripsCronData.processed.vip_milestone >= 1, "At least 1 VIP milestone drip processed");
+
+  // 3. Verify database MarketingCampaignLog records
+  const winbackLog = await prisma.marketingCampaignLog.findFirst({
+    where: {
+      customer_id: winbackCustomer.id,
+      campaign_type: "WIN_BACK_60D",
+    },
+  });
+  assert(winbackLog !== null, "Win-back campaign log persisted in database");
+  assert(winbackLog?.discount_code !== null, "Win-back log generated single-use discount coupon");
+
+  const vipLog = await prisma.marketingCampaignLog.findFirst({
+    where: {
+      customer_id: vipCustomer.id,
+      campaign_type: "VIP_SPEND_MILESTONE",
+    },
+  });
+  assert(vipLog !== null, "VIP milestone campaign log persisted in database");
+  assert(vipLog?.discount_code !== null, "VIP milestone log generated exclusive discount coupon");
+
+  // 4. Test deduplication / cooldown suppression
+  const dripsRepeatRes = await fetch(`${BASE_URL}/api/cron/marketing-drips`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.CRON_SECRET || "development-cron-secret"}`,
+    },
+  });
+  const dripsRepeatData = await dripsRepeatRes.json();
+  assert(dripsRepeatData.success === true, "Repeat cron sweep executed successfully");
+  const winbackLogsCount = await prisma.marketingCampaignLog.count({
+    where: {
+      customer_id: winbackCustomer.id,
+      campaign_type: "WIN_BACK_60D",
+    },
+  });
+  assert(winbackLogsCount === 1, "Duplicate drip suppressed during active cooldown window");
+  console.log();
+
+  // =========================================================================
+  // TEST 38: Admin Campaign Automation Studio & Config (Milestone 22 - Module 2)
+  // =========================================================================
+  console.log("--- TEST 38: Admin Campaign Automation Studio & Config ---");
+
+  // 1. Fetch campaigns and live metrics
+  const adminCampaignsRes = await fetch(`${BASE_URL}/api/admin/marketing-campaigns`);
+  assert(adminCampaignsRes.status === 200, "GET /api/admin/marketing-campaigns returns HTTP 200");
+  const adminCampaignsData = await adminCampaignsRes.json();
+  assert(adminCampaignsData.success === true, "Campaigns retrieved successfully");
+  assert(Array.isArray(adminCampaignsData.campaigns), "Campaigns array returned");
+  assert(adminCampaignsData.campaigns.length >= 3, "At least 3 core campaigns exist (WinBack, Replenish, VIP)");
+  assert(typeof adminCampaignsData.summary.total_sent === "number", "Summary total_sent is numeric");
+  assert(adminCampaignsData.summary.total_sent >= 3, "Summary sent count reflects dispatched drips");
+
+  // 2. Update campaign settings (delay cadence and discount percent)
+  const targetCampaign = adminCampaignsData.campaigns.find((c: any) => c.type === "WIN_BACK_60D");
+  assert(targetCampaign !== undefined, "Found WIN_BACK_60D campaign to update");
+
+  const patchCampaignRes = await fetch(`${BASE_URL}/api/admin/marketing-campaigns`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id: targetCampaign.id,
+      delay_days: 45,
+      discount_percent: 25,
+      is_active: true,
+      whatsapp_template: "Hello {{name}}, we miss you! Use code {{code}} for 25% off.",
+    }),
+  });
+  assert(patchCampaignRes.status === 200, "PATCH /api/admin/marketing-campaigns returns HTTP 200");
+  const patchCampaignData = await patchCampaignRes.json();
+  assert(patchCampaignData.success === true, "Campaign settings updated successfully");
+  assert(patchCampaignData.campaign.delay_days === 45, "Delay cadence updated to 45 days");
+  assert(patchCampaignData.campaign.discount_percent === 25, "Discount updated to 25%");
+
+  // 3. Dispatch test email preview
+  const previewRes = await fetch(`${BASE_URL}/api/admin/marketing-campaigns`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type: "WIN_BACK_60D",
+      test_email: "preview.tester@aura-commerce.ng",
+    }),
+  });
+  assert(previewRes.status === 200, "POST /api/admin/marketing-campaigns (test preview) returns HTTP 200");
+  const previewData = await previewRes.json();
+  assert(previewData.success === true, "Test campaign preview dispatched successfully");
+  assert(typeof previewData.discount_code === "string", "Preview includes sample discount code");
+  console.log();
+
+  // =========================================================================
+  // TEST 39: Customer Communication Preferences & 1-Click Unsubscribe (Milestone 22 - Module 3)
+  // =========================================================================
+  console.log("--- TEST 39: Customer Communication Preferences & 1-Click Unsubscribe ---");
+
+  // 1. Fetch preferences using rmaAuthHeaders
+  const getPrefsRes = await fetch(`${BASE_URL}/api/customer/preferences`, {
+    headers: rmaAuthHeaders,
+  });
+  assert(getPrefsRes.status === 200, "GET /api/customer/preferences returns HTTP 200");
+  const getPrefsData = await getPrefsRes.json();
+  assert(getPrefsData.success === true, "Customer preferences retrieved successfully");
+  assert(typeof getPrefsData.preferences.unsubscribe_token === "string", "Unsubscribe token is populated");
+  const unsubToken = getPrefsData.preferences.unsubscribe_token;
+
+  // 2. Update preferences (toggle options)
+  const patchPrefsRes = await fetch(`${BASE_URL}/api/customer/preferences`, {
+    method: "PATCH",
+    headers: rmaAuthHeaders,
+    body: JSON.stringify({
+      marketing_emails_opt_in: true,
+      marketing_whatsapp_opt_in: false,
+      replenishment_opt_in: true,
+    }),
+  });
+  assert(patchPrefsRes.status === 200, "PATCH /api/customer/preferences returns HTTP 200");
+  const patchPrefsData = await patchPrefsRes.json();
+  assert(patchPrefsData.success === true, "Preferences saved successfully");
+  assert(patchPrefsData.preferences.marketing_emails_opt_in === true, "Marketing email opted in");
+  assert(patchPrefsData.preferences.marketing_whatsapp_opt_in === false, "WhatsApp alerts opted out");
+
+  // 3. Test 1-Click Unsubscribe public GET endpoint (Regulatory NDPR compliance)
+  const unsubGetRes = await fetch(`${BASE_URL}/api/customer/unsubscribe?token=${unsubToken}`);
+  assert(unsubGetRes.status === 200, "GET /api/customer/unsubscribe with token returns HTTP 200");
+  const unsubHtml = await unsubGetRes.text();
+  assert(
+    unsubHtml.toLowerCase().includes("unsubscribed") &&
+      unsubHtml.toLowerCase().includes("successfully"),
+    "HTML page confirms customer unsubscription"
+  );
+
+  // Verify in database customer is opted out
+  const unsubscribedCustomer = await prisma.customer.findUnique({
+    where: { unsubscribe_token: unsubToken },
+  });
+  assert(unsubscribedCustomer?.marketing_emails_opt_in === false, "Customer opted out of marketing emails in DB");
+  assert(unsubscribedCustomer?.replenishment_opt_in === false, "Customer opted out of replenishment in DB");
+
+  // 4. Test 1-Click Unsubscribe API POST endpoint
+  const unsubPostRes = await fetch(`${BASE_URL}/api/customer/unsubscribe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: unsubToken }),
+  });
+  assert(unsubPostRes.status === 200, "POST /api/customer/unsubscribe returns HTTP 200");
+  const unsubPostData = await unsubPostRes.json();
+  assert(unsubPostData.success === true, "API unsubscription succeeded");
+
+  // 5. Re-subscribe customer back via preferences PATCH to verify bidirectional toggle
+  const resubscribeRes = await fetch(`${BASE_URL}/api/customer/preferences`, {
+    method: "PATCH",
+    headers: rmaAuthHeaders,
+    body: JSON.stringify({
+      marketing_emails_opt_in: true,
+      marketing_whatsapp_opt_in: true,
+      replenishment_opt_in: true,
+    }),
+  });
+  assert(resubscribeRes.status === 200, "Re-subscription PATCH returns HTTP 200");
+  const resubscribeData = await resubscribeRes.json();
+  assert(resubscribeData.preferences.marketing_emails_opt_in === true, "Customer re-subscribed to marketing emails");
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");
