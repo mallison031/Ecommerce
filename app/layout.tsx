@@ -12,7 +12,6 @@ import { HeaderAccountButton } from "@/components/header-account-button";
 import { CurrencySelector } from "@/components/currency-selector";
 import { SupportContactModal } from "@/components/support-contact-modal";
 import { FlashSaleBanner } from "@/components/flash-sale-banner";
-import { CompareDrawer } from "@/components/compare-drawer";
 
 export const metadata: Metadata = {
   title: "Aura Essentials | Curated Multi-Sector Storefront",
@@ -169,7 +168,6 @@ export default function RootLayout({
             </div>
           </footer>
           <SupportContactModal />
-          <CompareDrawer />
           </WishlistProvider>
         </CartProvider>
       </CurrencyProvider>

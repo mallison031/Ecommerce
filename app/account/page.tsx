@@ -39,6 +39,8 @@ import {
   Wallet,
   TrendingDown,
   Sliders,
+  Lock,
+  Key,
 } from "lucide-react";
 import { formatKoboToNaira } from "@/lib/utils";
 import { useCart } from "@/context/cart-context";
@@ -135,8 +137,10 @@ function AccountPortalContent() {
   }, [searchParams]);
 
   // Sign-in Form State
+  const [authMode, setAuthMode] = useState<"login" | "register" | "otp">("login");
   const [authStep, setAuthStep] = useState<"email" | "otp">("email");
   const [emailInput, setEmailInput] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
   const [nameInput, setNameInput] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
   const [otpInput, setOtpInput] = useState("");
@@ -198,6 +202,67 @@ function AccountPortalContent() {
   useEffect(() => {
     fetchProfile();
   }, []);
+
+  // Password Login
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const res = await fetch("/api/customer/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailInput, password: passwordInput }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAuthError(data.error || "Failed to sign in.");
+        if (data.no_password_set) {
+          setAuthMode("otp");
+          setAuthStep("email");
+        }
+      } else {
+        await fetchProfile();
+      }
+    } catch (err) {
+      setAuthError("Network error signing in. Please try again.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Register with Password
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordInput.length < 6) {
+      setAuthError("Password must be at least 6 characters long.");
+      return;
+    }
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const res = await fetch("/api/customer/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: emailInput,
+          password: passwordInput,
+          name: nameInput,
+          phone: phoneInput,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAuthError(data.error || "Failed to create account.");
+      } else {
+        await fetchProfile();
+      }
+    } catch (err) {
+      setAuthError("Network error creating account. Please try again.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
 
   // Step 1: Send OTP
   const handleSendOtp = async (e: React.FormEvent) => {
@@ -427,8 +492,159 @@ function AccountPortalContent() {
             </div>
           )}
 
-          {authStep === "email" ? (
-            <form onSubmit={handleSendOtp} className="space-y-4">
+          {/* Auth Method Selector Tabs */}
+          <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-2xl text-xs font-bold text-slate-600">
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode("login");
+                setAuthError(null);
+                setAuthSuccessMessage(null);
+              }}
+              className={`py-2 px-2 rounded-xl transition-all text-center ${
+                authMode === "login"
+                  ? "bg-white text-slate-900 shadow-xs font-black"
+                  : "hover:text-slate-900"
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode("register");
+                setAuthError(null);
+                setAuthSuccessMessage(null);
+              }}
+              className={`py-2 px-2 rounded-xl transition-all text-center ${
+                authMode === "register"
+                  ? "bg-white text-slate-900 shadow-xs font-black"
+                  : "hover:text-slate-900"
+              }`}
+            >
+              Register
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode("otp");
+                setAuthError(null);
+                setAuthSuccessMessage(null);
+              }}
+              className={`py-2 px-2 rounded-xl transition-all text-center ${
+                authMode === "otp"
+                  ? "bg-white text-slate-900 shadow-xs font-black"
+                  : "hover:text-slate-900"
+              }`}
+            >
+              One-Time OTP
+            </button>
+          </div>
+
+          {/* MODE 1: PASSWORD SIGN IN */}
+          {authMode === "login" && (
+            <form onSubmit={handlePasswordLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Email Address <span className="text-pink-600">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  placeholder="your.name@example.com"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:bg-white focus:border-pink-500 transition-colors"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Password <span className="text-pink-600">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode("otp");
+                      setAuthStep("email");
+                    }}
+                    className="text-[11px] text-pink-600 font-semibold hover:underline"
+                  >
+                    Forgot / Login via OTP
+                  </button>
+                </div>
+                <input
+                  type="password"
+                  required
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:bg-white focus:border-pink-500 transition-colors"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={authLoading || !emailInput.trim() || !passwordInput}
+                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors shadow-xs flex items-center justify-center gap-2"
+              >
+                {authLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Signing In...
+                  </>
+                ) : (
+                  <>
+                    Sign In with Password <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+
+              <div className="text-center pt-2 space-y-1">
+                <p className="text-xs text-slate-500">
+                  New customer?{" "}
+                  <button
+                    type="button"
+                    onClick={() => setAuthMode("register")}
+                    className="text-pink-600 font-bold hover:underline"
+                  >
+                    Create an account
+                  </button>
+                </p>
+                <p className="text-xs text-slate-500">
+                  Prefer passwordless?{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode("otp");
+                      setAuthStep("email");
+                    }}
+                    className="text-slate-700 font-semibold hover:underline"
+                  >
+                    Use One-Time OTP code
+                  </button>
+                </p>
+              </div>
+            </form>
+          )}
+
+          {/* MODE 2: CREATE ACCOUNT */}
+          {authMode === "register" && (
+            <form onSubmit={handleRegister} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Full Name <span className="text-pink-600">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  placeholder="e.g. Amina Adeleke"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:bg-white focus:border-pink-500 transition-colors"
+                />
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   Email Address <span className="text-pink-600">*</span>
@@ -445,20 +661,7 @@ function AccountPortalContent() {
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Your Name (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={nameInput}
-                  onChange={(e) => setNameInput(e.target.value)}
-                  placeholder="e.g. Amina Adeleke"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:bg-white focus:border-pink-500 transition-colors"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Phone / WhatsApp (Optional)
+                  Phone / WhatsApp <span className="text-slate-400 font-normal">(Optional)</span>
                 </label>
                 <input
                   type="tel"
@@ -469,85 +672,196 @@ function AccountPortalContent() {
                 />
               </div>
 
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/70 text-[11px] text-slate-500 flex items-start gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>
-                  No password needed. We will send a secure 6-digit one-time code to verify your identity.
-                </span>
-              </div>
-
-              <button
-                type="submit"
-                disabled={authLoading || !emailInput.trim()}
-                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors shadow-xs flex items-center justify-center gap-2"
-              >
-                {authLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" /> Sending Code...
-                  </>
-                ) : (
-                  <>
-                    Continue with One-Time Code <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleVerifyOtp} className="space-y-4">
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-bold text-slate-700">
-                    Enter 6-Digit Code
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthStep("email");
-                      setOtpInput("");
-                    }}
-                    className="text-[11px] text-pink-600 font-semibold hover:underline"
-                  >
-                    Change email
-                  </button>
-                </div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Password <span className="text-pink-600">*</span>{" "}
+                  <span className="text-[11px] text-slate-400 font-normal">(min 6 characters)</span>
+                </label>
                 <input
-                  type="text"
+                  type="password"
                   required
-                  maxLength={6}
-                  value={otpInput}
-                  onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ""))}
-                  placeholder="123456"
-                  className="w-full px-3.5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-xl font-mono font-black tracking-widest text-slate-900 focus:outline-hidden focus:bg-white focus:border-pink-500"
+                  minLength={6}
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  placeholder="Create a strong password"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:bg-white focus:border-pink-500 transition-colors"
                 />
               </div>
 
               <button
                 type="submit"
-                disabled={authLoading || otpInput.length < 6}
+                disabled={authLoading || !emailInput.trim() || passwordInput.length < 6}
                 className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors shadow-xs flex items-center justify-center gap-2"
               >
                 {authLoading ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" /> Verifying...
+                    <Loader2 className="w-4 h-4 animate-spin" /> Creating Account...
                   </>
                 ) : (
                   <>
-                    Sign In & Access Account <CheckCircle className="w-4 h-4" />
+                    Create Customer Account <CheckCircle className="w-4 h-4" />
                   </>
                 )}
               </button>
 
               <div className="text-center pt-2">
-                <button
-                  type="button"
-                  onClick={handleSendOtp}
-                  disabled={authLoading}
-                  className="text-xs text-slate-500 hover:text-slate-800 font-semibold"
-                >
-                  Didn&apos;t receive a code? <span className="text-pink-600">Resend code</span>
-                </button>
+                <p className="text-xs text-slate-500">
+                  Already have an account?{" "}
+                  <button
+                    type="button"
+                    onClick={() => setAuthMode("login")}
+                    className="text-pink-600 font-bold hover:underline"
+                  >
+                    Sign In
+                  </button>
+                </p>
               </div>
             </form>
+          )}
+
+          {/* MODE 3: ONE-TIME OTP */}
+          {authMode === "otp" && (
+            <>
+              {authStep === "email" ? (
+                <form onSubmit={handleSendOtp} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Email Address <span className="text-pink-600">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      placeholder="your.name@example.com"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:bg-white focus:border-pink-500 transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Your Name (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      placeholder="e.g. Amina Adeleke"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:bg-white focus:border-pink-500 transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Phone / WhatsApp (Optional)
+                    </label>
+                    <input
+                      type="tel"
+                      value={phoneInput}
+                      onChange={(e) => setPhoneInput(e.target.value)}
+                      placeholder="e.g. 08012345678"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:bg-white focus:border-pink-500 transition-colors"
+                    />
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/70 text-[11px] text-slate-500 flex items-start gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>
+                      We will send a secure 6-digit one-time code to verify your identity.
+                    </span>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={authLoading || !emailInput.trim()}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors shadow-xs flex items-center justify-center gap-2"
+                  >
+                    {authLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Sending Code...
+                      </>
+                    ) : (
+                      <>
+                        Continue with One-Time Code <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+
+                  <div className="text-center pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setAuthMode("login")}
+                      className="text-xs text-slate-500 hover:text-slate-800 font-semibold"
+                    >
+                      Prefer password login? <span className="text-pink-600">Sign in with password</span>
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <form onSubmit={handleVerifyOtp} className="space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">
+                        Enter 6-Digit Code
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthStep("email");
+                          setOtpInput("");
+                        }}
+                        className="text-[11px] text-pink-600 font-semibold hover:underline"
+                      >
+                        Change email
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      maxLength={6}
+                      value={otpInput}
+                      onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ""))}
+                      placeholder="123456"
+                      className="w-full px-3.5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-xl font-mono font-black tracking-widest text-slate-900 focus:outline-hidden focus:bg-white focus:border-pink-500"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={authLoading || otpInput.length < 6}
+                    className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors shadow-xs flex items-center justify-center gap-2"
+                  >
+                    {authLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Verifying...
+                      </>
+                    ) : (
+                      <>
+                        Sign In & Access Account <CheckCircle className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+
+                  <div className="text-center pt-2 space-y-2">
+                    <button
+                      type="button"
+                      onClick={handleSendOtp}
+                      disabled={authLoading}
+                      className="block mx-auto text-xs text-slate-500 hover:text-slate-800 font-semibold"
+                    >
+                      Didn&apos;t receive a code? <span className="text-pink-600">Resend code</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAuthMode("login")}
+                      className="block mx-auto text-xs text-slate-500 hover:text-slate-800"
+                    >
+                      Return to password login
+                    </button>
+                  </div>
+                </form>
+              )}
+            </>
           )}
         </div>
       </div>

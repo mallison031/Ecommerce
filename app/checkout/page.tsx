@@ -297,31 +297,6 @@ export default function CheckoutPage() {
         <ArrowLeft className="w-3.5 h-3.5" /> Back to Cart
       </Link>
 
-      {/* Free Delivery Progress Banner */}
-      <div className="mb-8 p-4 rounded-2xl bg-white border border-slate-200 shadow-xs">
-        <div className="flex items-center justify-between text-xs font-semibold mb-2">
-          <div className="flex items-center gap-1.5">
-            <Truck className="w-4 h-4 text-emerald-600" />
-            {shipping.isFreeDelivery ? (
-              <span className="text-emerald-700">🎉 Congratulations! You unlocked Free Delivery!</span>
-            ) : (
-              <span className="text-slate-800">
-                Add <strong className="text-slate-900">{formatKoboToNaira(shipping.amountNeededForFreeDeliveryKobo)}</strong> more to get Free Delivery across Nigeria!
-              </span>
-            )}
-          </div>
-          <span className="text-slate-500">{shipping.freeDeliveryProgressPercent}%</span>
-        </div>
-        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-          <div
-            className={`h-full transition-all duration-300 rounded-full ${
-              shipping.isFreeDelivery ? "bg-emerald-500" : "bg-slate-900"
-            }`}
-            style={{ width: `${shipping.freeDeliveryProgressPercent}%` }}
-          />
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         {/* Checkout Form */}
         <div className="md:col-span-2">

@@ -2850,6 +2850,79 @@ async function runTests() {
   });
   console.log();
 
+  // =========================================================================
+  // TEST 43: Customer Password Auth, Catalog Expansion & Checkout Cleanup (Fixing 1)
+  // =========================================================================
+  console.log("--- TEST 43: Customer Password Auth, Catalog Expansion & Checkout Cleanup ---");
+
+  // 1. Register new customer with password
+  const testPasswordEmail = `user.${Date.now()}@auratest.ng`;
+  const registerRes = await fetch(`${BASE_URL}/api/customer/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: testPasswordEmail,
+      password: "TestSecurePassword123!",
+      name: "Aura Sim Shopper",
+      phone: "08099887766",
+    }),
+  });
+  assert(registerRes.status === 200, "POST /api/customer/auth/register returns HTTP 200");
+  const registerData = await registerRes.json();
+  assert(registerData.success === true, "Password registration reports success: true");
+  assert(typeof registerData.token === "string", "Registration generates customer session token");
+
+  // 2. Log in with valid password
+  const loginRes = await fetch(`${BASE_URL}/api/customer/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: testPasswordEmail,
+      password: "TestSecurePassword123!",
+    }),
+  });
+  assert(loginRes.status === 200, "POST /api/customer/auth/login returns HTTP 200");
+  const loginData = await loginRes.json();
+  assert(loginData.success === true, "Customer login reports success: true");
+  assert(typeof loginData.token === "string", "Login returns fresh session token");
+
+  // 3. Reject login with invalid password
+  const badLoginRes = await fetch(`${BASE_URL}/api/customer/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: testPasswordEmail,
+      password: "IncorrectPasswordXYZ",
+    }),
+  });
+  assert(badLoginRes.status === 401, "POST /api/customer/auth/login with wrong password returns HTTP 401");
+  const badLoginData = await badLoginRes.json();
+  assert(badLoginData.success === false, "Incorrect password attempt is rejected");
+
+  // 4. Verify Catalog Expansion (all 4 sectors have at least 6 active products)
+  const sectors = await prisma.sector.findMany({
+    include: {
+      products: { where: { is_active: true } },
+    },
+  });
+  assert(sectors.length >= 4, "Storefront has at least 4 sectors");
+  for (const s of sectors) {
+    assert(
+      s.products.length >= 6,
+      `Sector '${s.name}' has at least 6 active products for sales (found ${s.products.length})`
+    );
+  }
+
+  // 5. Verify Checkout page HTML does NOT contain "to get Free Delivery" progress banner
+  const checkoutPageRes = await fetch(`${BASE_URL}/checkout`);
+  assert(checkoutPageRes.status === 200, "GET /checkout returns HTTP 200");
+  const checkoutHtml = await checkoutPageRes.text();
+  assert(
+    !checkoutHtml.includes("to get Free Delivery across Nigeria!"),
+    "Checkout page has removed 'to get Free Delivery' progress banner"
+  );
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");
