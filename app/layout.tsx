@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { CartProvider } from "@/context/cart-context";
 import { WishlistProvider } from "@/context/wishlist-context";
+import { CurrencyProvider } from "@/context/currency-context";
 import Link from "next/link";
 import { ShoppingBag, MessageCircle } from "lucide-react";
 import { HeaderCartButton } from "@/components/header-cart-button";
 import { HeaderWishlistButton } from "@/components/header-wishlist-button";
 import { HeaderSearchBar } from "@/components/header-search-bar";
 import { HeaderAccountButton } from "@/components/header-account-button";
+import { CurrencySelector } from "@/components/currency-selector";
 import { SupportContactModal } from "@/components/support-contact-modal";
 import { FlashSaleBanner } from "@/components/flash-sale-banner";
 import { CompareDrawer } from "@/components/compare-drawer";
@@ -26,8 +28,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
-        <CartProvider>
-          <WishlistProvider>
+        <CurrencyProvider>
+          <CartProvider>
+            <WishlistProvider>
             {/* Real-time Flash Sale Countdown Ticker */}
             <FlashSaleBanner />
 
@@ -82,6 +85,9 @@ export default function RootLayout({
                     <MessageCircle className="w-3.5 h-3.5" />
                     WhatsApp Support
                   </a>
+
+                  {/* Currency Selector */}
+                  <CurrencySelector />
 
                   {/* Account Trigger */}
                   <HeaderAccountButton />
@@ -166,7 +172,8 @@ export default function RootLayout({
           <CompareDrawer />
           </WishlistProvider>
         </CartProvider>
-      </body>
+      </CurrencyProvider>
+    </body>
     </html>
   );
 }

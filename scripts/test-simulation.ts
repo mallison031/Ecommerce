@@ -2623,6 +2623,233 @@ async function runTests() {
   assert(resubscribeData.preferences.marketing_emails_opt_in === true, "Customer re-subscribed to marketing emails");
   console.log();
 
+  // =========================================================================
+  // TEST 40: Customer Satisfaction, NPS & Post-Delivery Survey Engine (Milestone 23 - Module 1)
+  // =========================================================================
+  console.log("--- TEST 40: Customer Satisfaction, NPS & Post-Delivery Survey Engine ---");
+
+  // 1. Trigger automated survey sweep cron
+  const surveySweepRes = await fetch(`${BASE_URL}/api/cron/delivery-surveys`, { method: "POST" });
+  assert(surveySweepRes.status === 200, "POST /api/cron/delivery-surveys returns HTTP 200");
+  const surveySweepData = await surveySweepRes.json();
+  assert(surveySweepData.success === true, "Delivery survey cron sweep succeeded");
+  assert(typeof surveySweepData.processedDeliveredOrders === "number", "Sweep reports processed orders count");
+
+  // 2. Ensure an order is marked delivered and has a DeliveryFeedback record
+  let testFeedback = await prisma.deliveryFeedback.findFirst({
+    where: { status: "pending" },
+    include: { order: true },
+  });
+
+  if (!testFeedback) {
+    const deliveredOrder = await prisma.order.create({
+      data: {
+        customer_id: rmaVerifyData.customer.id,
+        status: "delivered",
+        delivered_at: new Date(),
+        subtotal_kobo: 1200000,
+        total_kobo: 1400000,
+        delivery_address: "15 Marina Road, Lagos Island",
+        items: {
+          create: [
+            {
+              product_id: product.id,
+              product_name_snapshot: product.name,
+              unit_price_kobo_snapshot: 1200000,
+              qty: 1,
+              line_total_kobo: 1200000,
+            },
+          ],
+        },
+      },
+    });
+
+    const token = `srv_test_${Date.now()}`;
+    testFeedback = await prisma.deliveryFeedback.create({
+      data: {
+        order_id: deliveredOrder.id,
+        customer_id: rmaVerifyData.customer.id,
+        survey_token: token,
+        status: "pending",
+      },
+      include: { order: true },
+    });
+  }
+
+  assert(testFeedback !== null, "Found or created pending delivery feedback record");
+  const surveyToken = testFeedback.survey_token;
+
+  // 3. Fetch survey details by token (Public GET)
+  const surveyGetRes = await fetch(`${BASE_URL}/api/feedback/${surveyToken}`);
+  assert(surveyGetRes.status === 200, "GET /api/feedback/[token] returns HTTP 200");
+  const surveyGetData = await surveyGetRes.json();
+  assert(surveyGetData.success === true, "Survey metadata retrieved successfully");
+  assert(surveyGetData.feedback.status === "pending", "Survey status is pending before completion");
+  assert(surveyGetData.popular_tags.length > 0, "Popular feedback tags are provided");
+
+  // 4. Submit feedback rating (Promoter score: 10/10, 5-stars)
+  const submitFeedbackRes = await fetch(`${BASE_URL}/api/feedback/${surveyToken}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      nps_score: 10,
+      delivery_speed_rating: 5,
+      packaging_rating: 5,
+      product_quality_rating: 5,
+      feedback_tags: ["⚡ Speedy Delivery", "📦 Pristine Packaging", "✨ Flawless Quality"],
+      comments: "Exceptional service! The packaging was exquisite and arrived right on schedule.",
+    }),
+  });
+  assert(submitFeedbackRes.status === 200, "POST /api/feedback/[token] returns HTTP 200");
+  const submitData = await submitFeedbackRes.json();
+  assert(submitData.success === true, "Feedback submitted successfully");
+  assert(submitData.is_promoter === true, "Rating is categorized as promoter (score 10)");
+
+  // 5. Query Admin Feedback & NPS Intelligence API
+  const adminFeedbackRes = await fetch(`${BASE_URL}/api/admin/feedback`);
+  assert(adminFeedbackRes.status === 200, "GET /api/admin/feedback returns HTTP 200");
+  const adminFeedbackData = await adminFeedbackRes.json();
+  assert(adminFeedbackData.success === true, "Admin feedback analytics retrieved successfully");
+  assert(adminFeedbackData.metrics.total_responses >= 1, "Admin metrics record at least 1 response");
+  assert(typeof adminFeedbackData.metrics.nps_score === "number", "Admin calculates numeric NPS score");
+  assert(adminFeedbackData.metrics.promoters_count >= 1, "Promoter count is tracked");
+  assert(Array.isArray(adminFeedbackData.feedbacks), "Feedbacks list is returned as an array");
+  console.log();
+
+  // =========================================================================
+  // TEST 41: Tiered Volume Pricing & Wholesale Bulk Discount Engine (Milestone 23 - Module 2)
+  // =========================================================================
+  console.log("--- TEST 41: Tiered Volume Pricing & Wholesale Bulk Discount Engine ---");
+
+  // 1. Admin creates volume tier for primary test product (Buy 3-5: 10% off)
+  const tier1Res = await fetch(`${BASE_URL}/api/admin/volume-tiers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      product_id: product.id,
+      min_quantity: 3,
+      max_quantity: 5,
+      discount_percentage: 10,
+    }),
+  });
+  assert(tier1Res.status === 200, "POST /api/admin/volume-tiers (Tier 1) returns HTTP 200");
+  const tier1Data = await tier1Res.json();
+  assert(tier1Data.success === true, "Volume Tier 1 created successfully");
+  const tier1Id = tier1Data.tier.id;
+
+  // 2. Admin creates higher volume tier (Buy 6+: 20% off)
+  const tier2Res = await fetch(`${BASE_URL}/api/admin/volume-tiers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      product_id: product.id,
+      min_quantity: 6,
+      max_quantity: null,
+      discount_percentage: 20,
+    }),
+  });
+  assert(tier2Res.status === 200, "POST /api/admin/volume-tiers (Tier 2) returns HTTP 200");
+  const tier2Data = await tier2Res.json();
+  assert(tier2Data.success === true, "Volume Tier 2 created successfully");
+  const tier2Id = tier2Data.tier.id;
+
+  // 3. Query Public Product Volume Tiers endpoint (Used by PDP Volume Pricing Widget)
+  const getTiersRes = await fetch(`${BASE_URL}/api/products/${product.id}/volume-tiers`);
+  assert(getTiersRes.status === 200, "GET /api/products/[id]/volume-tiers returns HTTP 200");
+  const getTiersData = await getTiersRes.json();
+  assert(getTiersData.success === true, "Product volume tiers retrieved successfully");
+  assert(getTiersData.tiers.length >= 2, "At least 2 volume tiers returned");
+  const foundTier1 = getTiersData.tiers.find((t: any) => t.min_quantity === 3);
+  assert(foundTier1 && foundTier1.discount_percentage === 10, "Tier 1 reflects 10% discount");
+  assert(foundTier1.savings_per_unit_kobo > 0, "Tier 1 calculates unit savings in kobo");
+
+  // 4. Test Checkout with 4 units -> Should activate Tier 1 (10% discount)
+  const volumeCheckoutPayload = {
+    email: "wholesale.buyer@test.ng",
+    name: "Amina Wholesale Buyer",
+    phone: "08099887766",
+    deliveryAddress: "Warehouse 4, Ikeja Industrial Estate",
+    state: "Lagos",
+    lagosZone: "lagos_mainland",
+    items: [{ productId: product.id, quantity: 4 }],
+  };
+
+  const volumeCheckoutRes = await fetch(`${BASE_URL}/api/checkout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(volumeCheckoutPayload),
+  });
+  assert(volumeCheckoutRes.status === 200, "POST /api/checkout with bulk quantity returns HTTP 200");
+  const volumeCheckoutData = await volumeCheckoutRes.json();
+  assert(volumeCheckoutData.success === true, "Bulk volume checkout succeeded");
+  assert(volumeCheckoutData.volumeDiscountKobo > 0, "Volume discount kobo is applied and greater than zero");
+  const expectedTier1Discount = Math.round(product.price_kobo * 0.1) * 4;
+  assert(
+    Math.abs(volumeCheckoutData.volumeDiscountKobo - expectedTier1Discount) <= 10,
+    "Volume discount matches 10% unit savings across 4 items"
+  );
+
+  // 5. Clean up created volume tiers
+  const delTier1 = await fetch(`${BASE_URL}/api/admin/volume-tiers?id=${tier1Id}`, { method: "DELETE" });
+  assert(delTier1.status === 200, "DELETE /api/admin/volume-tiers Tier 1 returns HTTP 200");
+  const delTier2 = await fetch(`${BASE_URL}/api/admin/volume-tiers?id=${tier2Id}`, { method: "DELETE" });
+  assert(delTier2.status === 200, "DELETE /api/admin/volume-tiers Tier 2 returns HTTP 200");
+  console.log();
+
+  // =========================================================================
+  // TEST 42: Multi-Currency & Regional Localization (Milestone 23 - Module 3)
+  // =========================================================================
+  console.log("--- TEST 42: Multi-Currency & Regional Localization ---");
+
+  // 1. Query public FX rates
+  const ratesRes = await fetch(`${BASE_URL}/api/currency/rates`);
+  assert(ratesRes.status === 200, "GET /api/currency/rates returns HTTP 200");
+  const ratesData = await ratesRes.json();
+  assert(ratesData.success === true, "Currency rates endpoint returns success: true");
+  assert(ratesData.base === "NGN", "Base currency is Nigerian Naira (NGN)");
+  assert(typeof ratesData.rates.USD === "number", "USD exchange rate is present");
+  assert(typeof ratesData.rates.GBP === "number", "GBP exchange rate is present");
+  assert(typeof ratesData.rates.EUR === "number", "EUR exchange rate is present");
+
+  // 2. Query admin currency settings
+  const adminCurrenciesRes = await fetch(`${BASE_URL}/api/admin/currency-settings`);
+  assert(adminCurrenciesRes.status === 200, "GET /api/admin/currency-settings returns HTTP 200");
+  const adminCurrenciesData = await adminCurrenciesRes.json();
+  assert(adminCurrenciesData.success === true, "Admin currency settings retrieved successfully");
+  assert(adminCurrenciesData.currencies.length >= 4, "Default currencies (NGN, USD, GBP, EUR) configured");
+
+  // 3. Admin updates USD FX rate
+  const originalUsdRate = ratesData.rates.USD;
+  const newUsdRate = 1620.5;
+  const updateRateRes = await fetch(`${BASE_URL}/api/admin/currency-settings`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      code: "USD",
+      exchange_rate_to_ngn: newUsdRate,
+    }),
+  });
+  assert(updateRateRes.status === 200, "PATCH /api/admin/currency-settings returns HTTP 200");
+  const updateRateData = await updateRateRes.json();
+  assert(updateRateData.success === true, "Currency rate updated successfully");
+  assert(updateRateData.currency.exchange_rate_to_ngn === newUsdRate, "USD rate updated in database");
+
+  // 4. Verify updated rate is served on public rates API
+  const recheckRatesRes = await fetch(`${BASE_URL}/api/currency/rates`);
+  const recheckRatesData = await recheckRatesRes.json();
+  assert(recheckRatesData.rates.USD === newUsdRate, "Public currency endpoint reflects updated FX rate");
+
+  // 5. Restore original USD rate
+  await fetch(`${BASE_URL}/api/admin/currency-settings`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      code: "USD",
+      exchange_rate_to_ngn: originalUsdRate,
+    }),
+  });
+  console.log();
+
   console.log("=================================================");
   console.log(`🎉 ALL ${passedTests}/${totalTests} INTEGRATION TESTS PASSED!`);
   console.log("=================================================\n");

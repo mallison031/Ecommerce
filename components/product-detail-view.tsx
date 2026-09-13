@@ -30,6 +30,7 @@ import { NIGERIAN_STATES, calculateShippingFee } from "@/lib/shipping";
 import { ProductQnA } from "@/components/product-qna";
 import { ProductWatchlistButton } from "@/components/product-watchlist-button";
 import { useCompareStore } from "@/lib/stores/compare-store";
+import { VolumePricingTable } from "@/components/volume-pricing-table";
 
 interface ProductDetailViewProps {
   product: {
@@ -387,6 +388,14 @@ export function ProductDetailView({ product, sector, ratingSummary }: ProductDet
             {product.description}
           </p>
         </div>
+
+        {/* Wholesale & Tiered Volume Pricing Widget */}
+        <VolumePricingTable
+          productId={product.id}
+          basePriceKobo={effectivePriceKobo}
+          selectedQty={quantity}
+          onSelectTierQty={(qty) => setQuantity(qty)}
+        />
 
         {/* Actions Box */}
         <div className="space-y-4 pt-4 border-t border-slate-200">

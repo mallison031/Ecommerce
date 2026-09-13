@@ -43,6 +43,9 @@ import {
   RefreshCcw,
   Gift,
   HelpCircle,
+  HeartHandshake,
+  Layers,
+  Globe,
 } from "lucide-react";
 import AdminReturnsTab from "@/components/admin/admin-returns-tab";
 import AdminSupportDeskTab from "@/components/admin/admin-support-desk-tab";
@@ -51,6 +54,9 @@ import { AdminGiftCardsTab } from "@/components/admin/admin-gift-cards-tab";
 import { AdminQnATab } from "@/components/admin/admin-qna-tab";
 import { AdminWatchlistTab } from "@/components/admin/admin-watchlist-tab";
 import { AdminMarketingTab } from "@/components/admin/admin-marketing-tab";
+import { AdminFeedbackTab } from "@/components/admin/admin-feedback-tab";
+import { AdminVolumeTiersTab } from "@/components/admin/admin-volume-tiers-tab";
+import { AdminCurrencyTab } from "@/components/admin/admin-currency-tab";
 import AdminLiveFeedBanner from "@/components/admin/admin-live-feed-banner";
 import DailySettlementModal from "@/components/admin/daily-settlement-modal";
 import { AdminNotificationCenter } from "@/components/admin-notification-center";
@@ -159,6 +165,9 @@ export default function AdminDashboardPage() {
     | "qna"
     | "watchlist"
     | "marketing"
+    | "feedback"
+    | "volume-tiers"
+    | "currency"
   >("orders");
   const [orders, setOrders] = useState<Order[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
@@ -1130,6 +1139,36 @@ export default function AdminDashboardPage() {
           }`}
         >
           <Sparkles className="w-4 h-4 text-purple-600" /> Marketing Drips
+        </button>
+        <button
+          onClick={() => setActiveTab("feedback")}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "feedback"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-400 hover:text-slate-700"
+          }`}
+        >
+          <HeartHandshake className="w-4 h-4 text-emerald-600" /> Customer Feedback & NPS
+        </button>
+        <button
+          onClick={() => setActiveTab("volume-tiers")}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "volume-tiers"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-400 hover:text-slate-700"
+          }`}
+        >
+          <Layers className="w-4 h-4 text-pink-600" /> Volume Pricing
+        </button>
+        <button
+          onClick={() => setActiveTab("currency")}
+          className={`pb-3 border-b-2 transition-all flex items-center gap-1.5 ${
+            activeTab === "currency"
+              ? "border-slate-900 text-slate-900"
+              : "border-transparent text-slate-400 hover:text-slate-700"
+          }`}
+        >
+          <Globe className="w-4 h-4 text-blue-600" /> Multi-Currency & FX
         </button>
       </div>
 
@@ -3050,6 +3089,15 @@ export default function AdminDashboardPage() {
 
       {/* Lifecycle Marketing & Retention Automation Tab */}
       {activeTab === "marketing" && <AdminMarketingTab />}
+
+      {/* Customer Satisfaction & Delivery NPS Engine Tab */}
+      {activeTab === "feedback" && <AdminFeedbackTab />}
+
+      {/* Tiered Volume Pricing & Wholesale Bulk Discount Tab */}
+      {activeTab === "volume-tiers" && <AdminVolumeTiersTab />}
+
+      {/* Multi-Currency & Regional FX Rates Tab */}
+      {activeTab === "currency" && <AdminCurrencyTab />}
 
       {/* QUICK RESTOCK / ADJUSTMENT MODAL */}
       {restockingProduct && (

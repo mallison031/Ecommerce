@@ -4,6 +4,7 @@ import { initializePaystackTransaction } from "@/lib/paystack";
 import { formatToE164 } from "@/lib/utils";
 import { calculateShippingFee } from "@/lib/shipping";
 import { validateCoupon, recordCouponRedemption } from "@/lib/promotions";
+import { calculateVolumeDiscount } from "@/lib/pricing/volume-tiers";
 import { z } from "zod";
 
 const checkoutSchema = z.object({
@@ -65,6 +66,11 @@ export async function POST(req: NextRequest) {
         id: { in: uniqueProductIds },
         is_active: true,
       },
+      include: {
+        volume_tiers: {
+          orderBy: { min_quantity: "asc" },
+        },
+      },
     });
 
     if (products.length !== uniqueProductIds.length) {
@@ -101,12 +107,31 @@ export async function POST(req: NextRequest) {
 
     // Calculate totals & line items with price snapshots and customization
     let subtotalKobo = 0;
+    let totalVolumeSavingsKobo = 0;
     const orderItemsData = items.map((item) => {
       const product = productMap.get(item.productId)!;
       const flashDiscount = flashDiscountMap.get(product.id) || 0;
+
+      // Calculate quantity-based volume tier discount
+      const volumeDiscountResult = calculateVolumeDiscount(
+        product.price_kobo,
+        item.quantity,
+        product.volume_tiers || []
+      );
+      const volumeTierDiscount = volumeDiscountResult.tier_applied
+        ? volumeDiscountResult.discount_percentage
+        : 0;
+
+      // Apply the highest applicable promotional percentage
+      const effectiveDiscount = Math.max(flashDiscount, volumeTierDiscount);
+
+      if (volumeDiscountResult.tier_applied && volumeTierDiscount >= flashDiscount) {
+        totalVolumeSavingsKobo += volumeDiscountResult.total_discount_kobo;
+      }
+
       const basePrice =
-        flashDiscount > 0
-          ? Math.round(product.price_kobo * ((100 - flashDiscount) / 100))
+        effectiveDiscount > 0
+          ? Math.round(product.price_kobo * ((100 - effectiveDiscount) / 100))
           : product.price_kobo;
       const giftWrapAddon = item.giftWrap ? 150000 : 0;
       const unitPriceKobo = basePrice + giftWrapAddon;
@@ -339,6 +364,7 @@ export async function POST(req: NextRequest) {
       orderNumber: order.order_number,
       orderId: order.id,
       subtotalKobo,
+      volumeDiscountKobo: totalVolumeSavingsKobo,
       couponCode: appliedCouponCode,
       couponDiscountKobo,
       giftCardCode: validatedGiftCard?.code,
