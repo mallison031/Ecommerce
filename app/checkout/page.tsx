@@ -439,7 +439,7 @@ export default function CheckoutPage() {
                   {state === "Lagos" && (
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Lagos Zone <span className="text-red-500">*</span>
+                        Lagos Area / Zone <span className="text-pink-600 font-semibold">(Fixed ₦6,000 Flat Delivery)</span>
                       </label>
                       <select
                         value={lagosZone}
