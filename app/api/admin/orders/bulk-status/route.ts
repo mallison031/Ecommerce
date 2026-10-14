@@ -3,10 +3,13 @@ import { prisma } from "@/lib/db/prisma";
 import { getCourierTrackingUrl } from "@/lib/notifications/courier-tracking";
 import { createAdminAlert } from "@/lib/notifications/admin-alerts";
 import { notifyOrderStatusChange } from "@/lib/notify";
+import { requireAdmin } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
   try {
     const body = await req.json();
     const { orderIds, status, courier_name } = body;
