@@ -3,6 +3,10 @@ import { sendWhatsAppTemplate } from "@/lib/whatsapp/send";
 import { formatKoboToNaira } from "@/lib/utils";
 import { Resend } from "resend";
 
+// Outbound links have to point at wherever this deployment actually lives, not at a domain that
+// may not resolve yet.
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://aurastore.ng";
+
 export type OrderNotificationStatus = "paid" | "shipped" | "delivered" | "returned";
 
 interface NotifyOrderOptions {
@@ -148,7 +152,7 @@ async function sendCustomerEmail({
           <p>Status: <span style="display:inline-block; padding: 4px 10px; background: #e0f2fe; color: #0369a1; border-radius: 4px; font-weight: bold; text-transform: uppercase;">${status}</span></p>
           ${dispatchHtml}
           <div style="margin: 20px 0;">
-            <a href="https://aurastore.ng/track-order?order=${orderNumber}" style="display: inline-block; padding: 10px 18px; background: #db2777; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">
+            <a href="${APP_URL}/track-order?order=${orderNumber}" style="display: inline-block; padding: 10px 18px; background: #db2777; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px;">
               Track Order Live
             </a>
           </div>
