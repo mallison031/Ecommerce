@@ -162,6 +162,44 @@ async function sendCustomerEmail({
   }
 }
 
+// Sign-in codes are the one notification that must not fail silently: a customer who is told
+// "we sent you a code" and never receives one has no way to recover, so this throws instead of
+// swallowing the error the way order emails do.
+export async function sendSignInOtpEmail({
+  toEmail,
+  code,
+  expiresInMinutes,
+}: {
+  toEmail: string;
+  code: string;
+  expiresInMinutes: number;
+}): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+
+  if (!apiKey) {
+    if (process.env.AUTH_EMAIL_MOCK === "1") {
+      console.info(`[Email (Mock)] Sign-in code for ${toEmail}: ${code}`);
+      return;
+    }
+    throw new Error("Sign-in email provider is not configured.");
+  }
+
+  const resend = new Resend(apiKey);
+  await resend.emails.send({
+    from: process.env.RESEND_FROM_EMAIL || "orders@resend.dev",
+    to: toEmail,
+    subject: `${code} is your Aura Store sign-in code`,
+    html: `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111;">
+        <h2 style="margin-bottom: 4px;">Aura<span style="color: #db2777;">.</span>Store</h2>
+        <p>Use this code to finish signing in. It expires in ${expiresInMinutes} minutes.</p>
+        <p style="font-size: 32px; letter-spacing: 6px; font-weight: bold; margin: 24px 0;">${code}</p>
+        <p style="font-size: 13px; color: #6b7280;">If you did not ask to sign in, you can ignore this email — nobody can use the code without it.</p>
+      </div>
+    `,
+  });
+}
+
 async function notifyAdmins({
   orderNumber,
   customerName,
