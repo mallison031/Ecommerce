@@ -4,11 +4,14 @@ import { notifyCustomerReturnStatus } from "@/lib/whatsapp/send";
 import { refundPaystackTransaction } from "@/lib/paystack";
 import { createCoupon } from "@/lib/promotions";
 import { ReturnStatus } from "@prisma/client";
+import { requireAdmin } from "@/lib/admin-auth";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
   try {
     const { id } = params;
 
@@ -46,6 +49,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
   try {
     const { id } = params;
     const body = await req.json();

@@ -7,8 +7,11 @@ import {
   DiscountType,
 } from "@/lib/promotions";
 import { formatKoboToNaira } from "@/lib/utils";
+import { requireAdmin } from "@/lib/admin-auth";
 
 export async function GET() {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
   try {
     const coupons = getAllCoupons();
     const flashSales = getActiveFlashSales();
@@ -43,6 +46,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
   try {
     const body = await req.json();
     const { action = "create_coupon" } = body;
