@@ -5,7 +5,7 @@ services:
     plan: free
     region: ohio # Closest to Neon AWS us-east-2
     branch: main
-    buildCommand: npm install && npx prisma generate && npm run build
+    buildCommand: npm install --include=dev && npx prisma generate && npm run build
     startCommand: npm run start
     healthCheckPath: /api/health
     autoDeploy: true
