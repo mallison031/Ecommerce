@@ -2,8 +2,8 @@ services:
   - type: web
     name: aura-ecommerce-store
     runtime: node
-    plan: starter
-    region: frankfurt # Closest to Supabase AWS eu-central-1
+    plan: free
+    region: ohio # Closest to Neon AWS us-east-2
     branch: main
     buildCommand: npm install && npx prisma generate && npm run build
     startCommand: npm run start
