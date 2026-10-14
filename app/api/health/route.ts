@@ -25,7 +25,8 @@ export async function GET() {
     env: process.env.NODE_ENV || "development",
   };
 
-  const statusCode = dbStatus === "connected" ? 200 : 503;
-
-  return NextResponse.json(responsePayload, { status: statusCode });
+  // Render fails a deploy when its health path returns non-200. A cold Neon branch or a
+  // transient connection blip during boot would otherwise mark a working service as dead,
+  // so liveness answers 200 and the database state travels in the body instead.
+  return NextResponse.json(responsePayload, { status: 200 });
 }
