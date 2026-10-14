@@ -3,129 +3,20 @@ import { ProductCard, ProductData } from "@/components/product-card";
 import { Sparkles, MessageCircle, Truck, ShieldCheck, HeartHandshake } from "lucide-react";
 import Link from "next/link";
 
-// Fallback products in case database is not yet migrated
-const FALLBACK_SECTORS = [
-  {
-    id: "s1",
-    name: "Jewelry & Accessories",
-    slug: "jewelry-accessories",
-    products: [
-      {
-        id: "p1",
-        name: "18K Gold Plated Minimalist Chain",
-        slug: "18k-gold-plated-minimalist-chain",
-        description: "Dainty, tarnish-resistant gold-plated chain necklace suitable for everyday wear.",
-        price_kobo: 1250000,
-        stock_qty: 25,
-        image_urls: ["https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600&q=80"],
-      },
-      {
-        id: "p2",
-        name: "Chunky Pearl Drop Earrings",
-        slug: "chunky-pearl-drop-earrings",
-        description: "Elegant freshwater baroque pearl drops with hypoallergenic gold posts.",
-        price_kobo: 850000,
-        stock_qty: 15,
-        image_urls: ["https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=600&q=80"],
-      },
-    ],
-  },
-  {
-    id: "s2",
-    name: "Girly Essentials",
-    slug: "girly-essentials",
-    products: [
-      {
-        id: "p3",
-        name: "Velvet Quilted Cosmetic Bag",
-        slug: "velvet-quilted-cosmetic-bag",
-        description: "Spacious luxury cosmetic pouch with gold zipper and water-resistant interior lining.",
-        price_kobo: 950000,
-        stock_qty: 30,
-        image_urls: ["https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=600&q=80"],
-      },
-      {
-        id: "p4",
-        name: "Hydrating Lip Oil Gift Trio",
-        slug: "hydrating-lip-oil-gift-trio",
-        description: "Non-sticky, nourishing lip gloss set infused with vitamin E and jojoba oil.",
-        price_kobo: 700000,
-        stock_qty: 40,
-        image_urls: ["https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=600&q=80"],
-      },
-    ],
-  },
-  {
-    id: "s3",
-    name: "Content Accessories",
-    slug: "content-accessories",
-    products: [
-      {
-        id: "p5",
-        name: "10-inch Desktop LED Ring Light with Tripod",
-        slug: "10-inch-desktop-led-ring-light",
-        description: "Dimmable 3-color mode ring light with phone holder for TikTok and Instagram creators.",
-        price_kobo: 1800000,
-        stock_qty: 20,
-        image_urls: ["https://images.unsplash.com/photo-1598550476439-6847785fcea6?w=600&q=80"],
-      },
-      {
-        id: "p6",
-        name: "Wireless Lavalier Microphone for Smartphone",
-        slug: "wireless-lavalier-microphone",
-        description: "Plug-and-play wireless lapel mic for crisp audio recording with noise cancellation.",
-        price_kobo: 2200000,
-        stock_qty: 18,
-        image_urls: ["https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=600&q=80"],
-      },
-    ],
-  },
-  {
-    id: "s4",
-    name: "Kitchen/Souvenirs",
-    slug: "kitchen-souvenirs",
-    products: [
-      {
-        id: "p7",
-        name: "Aesthetic Glass Tumbler with Bamboo Lid & Straw",
-        slug: "aesthetic-glass-tumbler-bamboo-lid",
-        description: "Eco-friendly iced coffee and boba tumbler with silicone protective sleeve.",
-        price_kobo: 650000,
-        stock_qty: 50,
-        image_urls: ["https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&q=80"],
-      },
-      {
-        id: "p8",
-        name: "Custom Gift Set Stainless Cutlery Souvenir",
-        slug: "custom-stainless-cutlery-souvenir",
-        description: "Premium gold-toned 4-piece cutlery set in a presentation gift box, ideal for wedding souvenirs.",
-        price_kobo: 1100000,
-        stock_qty: 35,
-        image_urls: ["https://images.unsplash.com/photo-1615865417491-9941019fbc00?w=600&q=80"],
-      },
-    ],
-  },
-];
+// A build-time snapshot would freeze prices and stock, and would also make the
+// build itself depend on Neon being reachable. Render on every request instead.
+export const dynamic = "force-dynamic";
 
 async function getSectorsWithProducts() {
-  try {
-    const sectors = await prisma.sector.findMany({
-      orderBy: { display_order: "asc" },
-      include: {
-        products: {
-          where: { is_active: true },
-          orderBy: { created_at: "desc" },
-        },
+  return prisma.sector.findMany({
+    orderBy: { display_order: "asc" },
+    include: {
+      products: {
+        where: { is_active: true },
+        orderBy: { created_at: "desc" },
       },
-    });
-
-    if (sectors.length > 0) {
-      return sectors;
-    }
-  } catch (err) {
-    console.warn("Database not ready, using fallback catalog data for storefront preview.");
-  }
-  return FALLBACK_SECTORS;
+    },
+  });
 }
 
 export default async function HomePage() {
