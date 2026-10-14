@@ -285,8 +285,6 @@ function AccountPortalContent() {
       } else {
         setAuthStep("otp");
         setAuthSuccessMessage(data.message);
-        // Pre-fill OTP in test environments if returned
-        if (data.otp) setOtpInput(data.otp);
       }
     } catch (err) {
       setAuthError("Network error. Please try again.");

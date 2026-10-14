@@ -34,7 +34,11 @@ export async function POST(req: NextRequest) {
 
     return response;
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Internal error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    // Never echo raw errors: Prisma failures include the database hostname.
+    console.error("Customer logout error:", err);
+    return NextResponse.json(
+      { error: "Sign-out is temporarily unavailable. Please try again." },
+      { status: 503 }
+    );
   }
 }

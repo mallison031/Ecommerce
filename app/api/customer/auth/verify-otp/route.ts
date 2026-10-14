@@ -73,10 +73,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // The httpOnly cookie is the credential. Returning the token in the body as well would let
+    // any script that can read this response bypass the httpOnly protection entirely.
     const response = NextResponse.json({
       success: true,
       message: "Sign-in successful!",
-      token,
       customer: {
         id: customer.id,
         name: customer.name,
@@ -99,7 +100,11 @@ export async function POST(req: NextRequest) {
 
     return response;
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Internal error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    // Never echo raw errors: Prisma failures include the database hostname.
+    console.error("Customer OTP verification error:", err);
+    return NextResponse.json(
+      { error: "Sign-in is temporarily unavailable. Please try again." },
+      { status: 503 }
+    );
   }
 }

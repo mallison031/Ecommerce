@@ -8,6 +8,36 @@ const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY || "sk_test_sim_secret";
 const WHATSAPP_APP_SECRET = process.env.WHATSAPP_APP_SECRET || "sim_app_secret";
 const WHATSAPP_VERIFY_TOKEN = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || "sim_verify_token";
 
+// Sign-in codes and session tokens are no longer echoed in JSON bodies. Tests read the code from
+// the CustomerAuthCode row (the same thing the email carries) and take the session from the
+// httpOnly cookie the API sets.
+const CUSTOMER_SESSION_COOKIE = "aura_customer_session";
+
+async function readLatestOtp(email: string): Promise<string> {
+  const authCode = await prisma.customerAuthCode.findFirst({
+    where: { email, used: false },
+    orderBy: { created_at: "desc" },
+  });
+  if (!authCode) throw new Error(`No unused OTP row found in database for ${email}`);
+  return authCode.code;
+}
+
+function customerAuthHeaders(res: Response) {
+  const rawCookies = res.headers.getSetCookie?.() ?? [];
+  const sessionCookie = rawCookies
+    .map((c) => c.split(";")[0])
+    .find((pair) => pair.startsWith(`${CUSTOMER_SESSION_COOKIE}=`));
+  if (!sessionCookie) {
+    throw new Error(`No ${CUSTOMER_SESSION_COOKIE} cookie in sign-in response headers`);
+  }
+  return {
+    "Content-Type": "application/json",
+    Cookie: sessionCookie,
+    // /api/customer/referrals still authenticates from the Authorization header only.
+    Authorization: `Bearer ${sessionCookie.split("=")[1]}`,
+  };
+}
+
 // Every /api/admin/* route now rejects callers without a session cookie (see lib/admin-auth).
 // The suite signs in through the real login route with a throwaway admin instead of hard-coding
 // credentials; deleting that admin at the end cascades away its sessions.
@@ -1086,28 +1116,40 @@ async function runTests() {
   assert(otpRes.status === 200, "Send OTP endpoint returns HTTP 200");
   const otpData = await otpRes.json();
   assert(otpData.success === true, "Send OTP reports success: true");
-  assert(typeof otpData.otp === "string" && otpData.otp.length === 6, "OTP is 6-digit code");
+  assert(otpData.otp === undefined, "OTP code is never returned in the response body");
+
+  // 1b. Resending immediately is throttled so the endpoint cannot be used to mailbomb an inbox
+  const resendRes = await fetch(`${BASE_URL}/api/customer/auth/send-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: accountTestEmail }),
+  });
+  assert(resendRes.status === 429, "Immediate OTP resend is rejected with HTTP 429");
+  const resendData = await resendRes.json();
+  assert(
+    typeof resendData.retryAfterSeconds === "number" && resendData.retryAfterSeconds > 0,
+    "Rate-limited OTP response reports retryAfterSeconds"
+  );
 
   // 2. Verify OTP & Issue Session
+  const otpCode = await readLatestOtp(accountTestEmail);
+  assert(/^\d{6}$/.test(otpCode), "Stored OTP is a 6-digit code");
+
   const verifyRes = await fetch(`${BASE_URL}/api/customer/auth/verify-otp`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       email: accountTestEmail,
-      code: otpData.otp,
+      code: otpCode,
     }),
   });
   assert(verifyRes.status === 200, "Verify OTP endpoint returns HTTP 200");
   const verifyData = await verifyRes.json();
   assert(verifyData.success === true, "Verify OTP reports success: true");
-  assert(typeof verifyData.token === "string" && verifyData.token.length > 20, "Session token issued");
+  assert(verifyData.token === undefined, "Session token is not returned in the response body");
   assert(verifyData.customer.email === accountTestEmail, "Authenticated customer email matches");
 
-  const authBearer = verifyData.token;
-  const authHeaders = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${authBearer}`,
-  };
+  const authHeaders = customerAuthHeaders(verifyRes);
 
   // 3. Fetch Customer Profile & Dashboard Data
   const profileRes = await fetch(`${BASE_URL}/api/customer/profile`, {
@@ -1224,8 +1266,7 @@ async function runTests() {
     body: JSON.stringify({ email: returnCustomerEmail, name: "Bolanle Williams", phone: "08055554321" }),
   });
   assert(rmaOtpSendRes.status === 200, "RMA customer OTP send returns HTTP 200");
-  const rmaOtpData = await rmaOtpSendRes.json();
-  const rmaOtp = rmaOtpData.otp;
+  const rmaOtp = await readLatestOtp(returnCustomerEmail);
 
   const rmaVerifyRes = await fetch(`${BASE_URL}/api/customer/auth/verify-otp`, {
     method: "POST",
@@ -1234,11 +1275,7 @@ async function runTests() {
   });
   assert(rmaVerifyRes.status === 200, "RMA customer verify-otp returns HTTP 200");
   const rmaVerifyData = await rmaVerifyRes.json();
-  const rmaToken = rmaVerifyData.token;
-  const rmaAuthHeaders = {
-    Authorization: `Bearer ${rmaToken}`,
-    "Content-Type": "application/json",
-  };
+  const rmaAuthHeaders = customerAuthHeaders(rmaVerifyRes);
 
   // 2. Create delivered order for customer to return
   const testDeliveredOrder = await prisma.order.create({
@@ -1798,10 +1835,7 @@ async function runTests() {
   // 2. Reject self-referral
   const selfReferralRes = await fetch(`${BASE_URL}/api/customer/referrals`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${rmaToken}`,
-    },
+    headers: rmaAuthHeaders,
     body: JSON.stringify({ referralCode: referralGetData.data.referralCode }),
   });
   assert(selfReferralRes.status === 400, "Self-referral is rejected with HTTP 400");
@@ -2947,7 +2981,12 @@ async function runTests() {
   assert(registerRes.status === 200, "POST /api/customer/auth/register returns HTTP 200");
   const registerData = await registerRes.json();
   assert(registerData.success === true, "Password registration reports success: true");
-  assert(typeof registerData.token === "string", "Registration generates customer session token");
+  assert(registerData.token === undefined, "Registration does not return the session token in the body");
+  const registerHeaders = customerAuthHeaders(registerRes);
+
+  // 1b. The registered session cookie authenticates account calls
+  const regProfileRes = await fetch(`${BASE_URL}/api/customer/profile`, { headers: registerHeaders });
+  assert(regProfileRes.status === 200, "Registered customer session cookie authenticates profile reads");
 
   // 2. Log in with valid password
   const loginRes = await fetch(`${BASE_URL}/api/customer/auth/login`, {
@@ -2961,7 +3000,12 @@ async function runTests() {
   assert(loginRes.status === 200, "POST /api/customer/auth/login returns HTTP 200");
   const loginData = await loginRes.json();
   assert(loginData.success === true, "Customer login reports success: true");
-  assert(typeof loginData.token === "string", "Login returns fresh session token");
+  assert(loginData.token === undefined, "Login does not return the session token in the body");
+  const loginHeaders = customerAuthHeaders(loginRes);
+
+  // 2b. Password login issues its own working session
+  const loginProfileRes = await fetch(`${BASE_URL}/api/customer/profile`, { headers: loginHeaders });
+  assert(loginProfileRes.status === 200, "Password login session cookie authenticates profile reads");
 
   // 3. Reject login with invalid password
   const badLoginRes = await fetch(`${BASE_URL}/api/customer/auth/login`, {
