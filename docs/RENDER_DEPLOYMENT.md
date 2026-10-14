@@ -1,120 +1,169 @@
 # Render Deployment Guide — Aura Storefront & Admin API
 
-This guide provides end-to-end instructions for deploying the Next.js 14 eCommerce application to **[Render](https://render.com)**.
+End-to-end instructions for deploying this Next.js 14 application to **[Render](https://render.com)**.
 
 ---
 
 ## Architecture Summary
 - **Framework**: Next.js 14 (App Router)
-- **Runtime**: Node.js 20 LTS
-- **Database**: PostgreSQL (Supabase with AWS `eu-central-1` transaction pooler)
+- **Runtime**: Node.js 20 LTS (`.nvmrc` pins `20.20.2`)
+- **Database**: **Neon** PostgreSQL, AWS `us-east-2` (Ohio), reached over the pooled PgBouncer endpoint
 - **ORM**: Prisma Client
-- **Payments**: Paystack (Webhook-driven transactional confirmation)
-- **Notifications**: Resend (Email) & Meta WhatsApp Cloud API
-- **Monitoring**: `/api/health` zero-downtime health check probe
+- **Payments**: Paystack (webhook-driven transactional confirmation)
+- **Notifications**: Resend (email) & Meta WhatsApp Cloud API
+- **Monitoring**: `/api/health` liveness probe
+
+> The database was moved from Supabase (`eu-central-1`) to Neon (`us-east-2`). The Render
+> service region is `ohio` so compute sits next to the database. Do not provision this service in
+> Frankfurt — every query would cross an ocean and you pay for that egress on Neon.
 
 ---
 
-## Option 1: One-Click Deploy via Render Blueprint (Recommended)
+## Option 1: One-Click Deploy via Render Blueprint (the supported path)
 
-The repository includes a ready-to-use [`render.yaml`](../render.yaml) blueprint specification.
+The repository contains a [`render.yaml`](../render.yaml) blueprint that is the source of truth for
+the service definition. **Use this rather than the manual route**, otherwise `render.yaml` edits in
+later pull requests change nothing about what is actually deployed.
 
 1. Log in to [Render Dashboard](https://dashboard.render.com).
 2. Click **New +** → **Blueprint**.
-3. Connect your GitHub account and select the `mallison031/Ecommerce` repository.
-4. Render will parse `render.yaml` and discover the `aura-ecommerce-store` service.
-5. Fill in the required environment variables (see table below).
-6. Click **Apply**. Render will automatically build, run database client generation, and deploy the application.
+3. Connect the GitHub account owning `mallison031/Ecommerce` and select that repository.
+4. Render parses `render.yaml` and discovers `aura-ecommerce-store`.
+5. Fill in the environment variables (every one is `sync: false`, so each needs a value from you).
+6. Click **Apply** to build and deploy.
+7. After the first deploy, subsequent merges to `main` auto-deploy (`autoDeploy: true`).
 
 ---
 
 ## Option 2: Manual Web Service Setup
 
-If setting up directly via the Render UI:
+Only if you deliberately want the service decoupled from the blueprint.
 
-1. In the Render Dashboard, click **New +** → **Web Service**.
-2. Select your repository: `mallison031/Ecommerce`.
-3. Configure the service settings:
+1. **New +** → **Web Service**, select `mallison031/Ecommerce`.
+2. Configure:
    - **Name**: `aura-ecommerce-store`
-   - **Region**: `Frankfurt (EU Central)` *(matches the Supabase `aws-0-eu-central-1` database region for minimum latency)*
+   - **Region**: `Ohio (AWS us-east-2)` — matches the Neon database region
    - **Branch**: `main`
    - **Runtime**: `Node`
-   - **Build Command**:
-     ```bash
-     npm install && npx prisma generate && npm run build
-     ```
-   - **Start Command**:
-     ```bash
-     npm run start
-     ```
-   - **Plan**: `Starter` (or `Free` for testing)
-4. Under **Advanced Settings**:
+   - **Build Command**: `npm install --include=dev && npx prisma generate && npm run build`
+   - **Start Command**: `npm run start`
+   - **Plan**: see *Free plan caveats* below before choosing `Free`
+3. **Advanced Settings**:
    - **Health Check Path**: `/api/health`
    - **Auto-Deploy**: `Yes`
-5. Add the Environment Variables listed in the next section.
-6. Click **Create Web Service**.
+4. Add the environment variables below, then **Create Web Service**.
 
 ---
 
-## Environment Variables Configuration
+## Environment Variables
 
-Set these variables in the Render Dashboard (**Environment** tab):
+| Variable | Required | Notes |
+| :--- | :---: | :--- |
+| `NODE_ENV` | **Yes** | `production` |
+| `NODE_VERSION` | **Yes** | `20.20.2` |
+| `DATABASE_URL` | **Yes** | Neon **pooled** URL (hostname ends in `-pooler`), e.g. `postgresql://...@ep-XXXX-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require` |
+| `NEXT_PUBLIC_APP_URL` | **Yes** | Your live origin, e.g. `https://aura-ecommerce-store.onrender.com` — **set before the first build** (see below) |
+| `PAYSTACK_SECRET_KEY` | **Yes** | `sk_live_...` for real payments (`sk_test_...` while testing) |
+| `PAYSTACK_PUBLIC_KEY` | Optional | `pk_live_...` |
+| `CRON_SECRET` | **Yes** | Bearer token for the `/api/cron/*` sweeps — `openssl rand -hex 24` |
+| `RESEND_API_KEY` | Optional | `re_...` — without it, customer emails silently fail and only WhatsApp notifications are attempted |
+| `RESEND_FROM_EMAIL` | Optional | Must be a domain you verified in Resend |
+| `WHATSAPP_ACCESS_TOKEN` | Optional | Permanent System User token (temporary tokens expire) |
+| `WHATSAPP_PHONE_NUMBER_ID` | Optional | From the Meta app's WhatsApp setup |
+| `WHATSAPP_APP_SECRET` | Optional | Verifies inbound webhook signatures |
+| `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | Optional | Must match the value you type in the Meta callback config |
+| `ADMIN_WHATSAPP_PHONE` | Optional | Owner number for order alerts |
 
-| Variable Name | Required | Description | Example / Notes |
-| :--- | :---: | :--- | :--- |
-| `NODE_ENV` | **Yes** | Node environment | `production` |
-| `NODE_VERSION` | **Yes** | Node runtime version | `20.20.2` |
-| `DATABASE_URL` | **Yes** | Supabase connection string | `postgresql://postgres.[ref]:[pass]@aws-0-eu-central-1.pooler.supabase.com:5432/postgres?sslmode=require&connection_limit=15` |
-| `NEXT_PUBLIC_APP_URL` | **Yes** | Live base URL of your app | `https://aura-ecommerce-store.onrender.com` (or your custom domain) |
-| `PAYSTACK_SECRET_KEY` | **Yes** | Paystack Secret Key | `sk_live_...` (or `sk_test_...`) |
-| `PAYSTACK_PUBLIC_KEY` | Optional | Paystack Public Key | `pk_live_...` (or `pk_test_...`) |
-| `CRON_SECRET` | **Yes** | Bearer secret for cron sweeps | A strong random token (e.g. `openssl rand -hex 24`) |
-| `RESEND_API_KEY` | Optional | API key for transactional emails | `re_...` from Resend dashboard |
-| `RESEND_FROM_EMAIL` | Optional | Sender address for emails | `orders@yourdomain.com` or `orders@resend.dev` |
-| `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | Optional | Meta Webhook verify token | Configured in Meta App Dashboard |
-| `WHATSAPP_APP_SECRET` | Optional | Meta App Secret for HMAC signatures | From Meta App Dashboard |
-| `WHATSAPP_PHONE_NUMBER_ID` | Optional | Meta Cloud API Phone Number ID | From Meta WhatsApp settings |
-| `WHATSAPP_ACCESS_TOKEN` | Optional | Permanent/System User Graph API Token | From Meta Business Manager |
-| `ADMIN_WHATSAPP_PHONE` | Optional | WhatsApp number for admin alerts | `+2348000000000` |
+### `NEXT_PUBLIC_APP_URL` is baked at build time
 
-> [!IMPORTANT]
-> **Database Pooler Tip**: Always use the **Transaction Pooler URL** (port `6543` or `5432` with `connection_limit=15`) in `DATABASE_URL` to prevent exhausting connection limits under serverless or high concurrency traffic.
+Next.js inlines `NEXT_PUBLIC_*` into the bundle during `next build`, and this app reads it for
+Paystack redirect targets, emailed links, canonical URLs and Open Graph images. Setting it after a
+deploy leaves the old value inside the artifact — **add it before the first build**, then trigger a
+redeploy if you change it. Leaving it as `http://localhost:3000` sends customers and webhooks to
+your laptop.
+
+### Pooled versus direct Neon URLs
+
+`DATABASE_URL` is the pooled PgBouncer endpoint and is right for application traffic. PgBouncer runs
+in transaction mode, which does not carry session state, so **schema operations must use the direct
+URL** (`DATABASE_URL_UNPOOLED`, no `-pooler` in the hostname). Running `prisma migrate deploy` or
+`prisma db push` over the pooled URL fails in ways that never mention pooling — typically
+`prepared statement "s0" already exists` or a `relation ... does not exist` immediately after a
+`SET search_path` that did not persist.
+
+### The database schema is not created by the deploy
+
+`render.yaml` runs `npx prisma generate` (client codegen) — it applies **no** schema. A fresh Neon
+branch therefore deploys a service with no tables. See [`../prisma/migrations/README.md`](../prisma/migrations/README.md)
+for the baseline procedure that makes schema application reproducible.
+
+---
+
+## Free plan caveats
+
+`render.yaml` currently specifies `plan: free`. Known limits: **512 MB RAM, ~0.1 CPU, no persistent
+disk, one instance**, and the service **spins down after 15 minutes of inactivity with a ~30 second
+cold start** on the next request.
+
+That interacts badly with the parts of this store that are not a person clicking around:
+
+- **Paystack webhooks** — the first confirmation event after a quiet period waits out the cold start.
+  Paystack retries, so a payment is not lost, but the order sits unpaid for minutes.
+- **Meta WhatsApp webhook verification** — Meta's callback handshake does not wait ~30 seconds, so
+  subscribing the webhook can fail while the service is asleep.
+- **Cron sweeps** (`/api/cron/abandoned-sweep`, `review-reminders`, `marketing-drips`,
+  `delivery-surveys`) — a sleeping instance turns each scheduled ping into a cold start.
+- **Memory** — a 3,500-line admin bundle plus Prisma under real traffic can hit the 512 MB ceiling;
+  there is no vertical headroom on Free.
+
+The health probe deliberately answers `200` even when the database is unreachable (see
+`app/api/health/route.ts`), so a cold database during boot cannot fail a deploy; read the
+`"database"` field in the body instead of the status code.
+
+**For anything taking real money, `Starter` ($7/mo, always-on, same 512 MB) is the cheaper choice —
+the difference is paid in failed webhook deliveries on Free.**
 
 ---
 
 ## Post-Deployment Checklist
 
-1. **Verify Health Check Probe**:
+1. **Verify the health probe** — expect HTTP `200` on a live service, with `"database": "connected"`:
    ```bash
-   curl -i https://<your-render-subdomain>.onrender.com/api/health
-   ```
-   Should return HTTP `200 OK` with:
-   ```json
-   {
-     "status": "healthy",
-     "uptimeSeconds": 15,
-     "timestamp": "2026-09-13T14:00:00.000Z",
-     "database": "connected",
-     "responseTimeMs": 142,
-     "env": "production"
-   }
+   curl -i https://<render-subdomain>.onrender.com/api/health
    ```
 
-2. **Configure Paystack Webhooks**:
-   - Go to [Paystack Dashboard](https://dashboard.paystack.com/#/settings/developer) → **Settings** → **API Keys & Webhooks**.
-   - Set **Live Webhook URL** to:
-     `https://<your-render-subdomain>.onrender.com/api/webhooks/paystack`
-   - Test by clicking "Test Webhook".
+2. **Confirm the storefront is reading real inventory.** `GET /` renders per request. If it returns
+   `500`, the database is unreachable — check `database` in `/api/health` before assuming a code bug.
+   The homepage no longer substitutes sample catalog data, so a visible error is the correct
+   behaviour rather than advertising products that do not exist.
 
-3. **Configure Meta WhatsApp Cloud API Webhooks** (if active):
-   - Go to [Meta for Developers](https://developers.facebook.com) → WhatsApp → Configuration.
-   - Set **Callback URL** to:
-     `https://<your-render-subdomain>.onrender.com/api/webhooks/whatsapp`
-   - Enter your `WHATSAPP_WEBHOOK_VERIFY_TOKEN` and verify.
+3. **Point Paystack at the live webhook**: Paystack Dashboard → Settings → API Keys & Webhooks →
+   Live Webhook URL = `https://<render-subdomain>.onrender.com/api/webhooks/paystack`. Test by
+   re-sending a webhook, and confirm the handler is idempotent on `paystack_reference`.
 
-4. **Set Up Recurring Cron Jobs**:
-   - Set up an external cron ping (via Render Cron Job or services like [cron-job.org](https://cron-job.org)):
-     - URL: `https://<your-render-subdomain>.onrender.com/api/cron/abandoned-sweep`
-     - Method: `POST`
-     - Header: `Authorization: Bearer <YOUR_CRON_SECRET>`
-     - Schedule: Every 30–60 minutes.
+4. **Point Meta at the live webhook**: Developers → your app → WhatsApp → Configuration →
+   Callback URL = `https://<render-subdomain>.onrender.com/api/webhooks/whatsapp`, with the same
+   `WHATSAPP_WEBHOOK_VERIFY_TOKEN` value.
+
+5. **Schedule the cron sweeps** (Render Cron Job or cron-job.org), each as `POST` with header
+   `Authorization: Bearer <CRON_SECRET>`:
+
+   | Route | Purpose | Suggested cadence |
+   | :--- | :--- | :--- |
+   | `/api/cron/abandoned-sweep` | 1-hour reminder, 48-hour abandonment | every 30 min |
+   | `/api/cron/review-reminders` | post-delivery review requests | daily |
+   | `/api/cron/marketing-drips` | win-back & replenishment campaigns | daily |
+   | `/api/cron/delivery-surveys` | NPS survey after delivery | daily |
+
+---
+
+## Before you take public payments (unresolved)
+
+Two things are not deployment configuration and must be closed first:
+
+- **The admin panel is unauthenticated.** `app/admin/page.tsx` and every `app/api/admin/*` route
+  have no login check and there is no `middleware.ts`, while the site footer links to `/admin`.
+  Anyone with the URL can read every order and change any status.
+- **Placeholder contact details are hardcoded.** `wa.me/2348000000000` appears in `app/layout.tsx`
+  and `app/page.tsx`, and `admin@store.com` with a placeholder password hash is the seeded admin in
+  `prisma/seed.ts`.
