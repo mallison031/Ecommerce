@@ -5,6 +5,10 @@ import { formatToE164, formatKoboToNaira } from "@/lib/utils";
 import { notifyOrderStatusChange } from "@/lib/notify";
 import { sendWhatsAppTextMessage } from "@/lib/whatsapp/send";
 
+// Outbound links have to point at wherever this deployment actually lives, not at a domain that
+// may not resolve yet.
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://aurastore.ng";
+
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const mode = url.searchParams.get("hub.mode");
@@ -163,7 +167,7 @@ async function handleCustomerMessage(
       `2️⃣ *Catalog & Products*: Reply *STORE*\n` +
       `3️⃣ *Payment & Bank Transfers*: Reply *PAYMENT*\n` +
       `4️⃣ *Customer Support*: Reply with your question or *AGENT*\n\n` +
-      `🌐 Visit our storefront: https://aurastore.ng`;
+      `🌐 Visit our storefront: ${APP_URL}`;
 
     await sendWhatsAppTextMessage({ toE164: customerPhone, text: welcomeText });
     return;
@@ -173,10 +177,10 @@ async function handleCustomerMessage(
   if (text === "store" || text === "shop" || text === "catalog" || text === "website") {
     const storeText =
       `🛍️ *Aura Store Curated Collections*\n\n` +
-      `• 💎 *Jewelry & Accessories*: https://aurastore.ng/jewelry-accessories\n` +
-      `• 🌸 *Girly Essentials*: https://aurastore.ng/girly-essentials\n` +
-      `• 📸 *Content Accessories*: https://aurastore.ng/content-accessories\n` +
-      `• 🎁 *Kitchen & Souvenirs*: https://aurastore.ng/kitchen-souvenirs\n\n` +
+      `• 💎 *Jewelry & Accessories*: ${APP_URL}/jewelry-accessories\n` +
+      `• 🌸 *Girly Essentials*: ${APP_URL}/girly-essentials\n` +
+      `• 📸 *Content Accessories*: ${APP_URL}/content-accessories\n` +
+      `• 🎁 *Kitchen & Souvenirs*: ${APP_URL}/kitchen-souvenirs\n\n` +
       `🚚 Nationwide delivery: Lagos (24-48 hrs), other states (2-5 days).`;
 
     await sendWhatsAppTextMessage({ toE164: customerPhone, text: storeText });
@@ -198,7 +202,7 @@ async function handleCustomerMessage(
         `💳 *Pending Order Found*\n\n` +
         `You have a pending order *#${pendingOrder.order_number}* totaling *${formatKoboToNaira(pendingOrder.total_kobo)}*.\n\n` +
         `To pay securely with your Card, Bank Transfer, USSD, or Apple Pay, visit:\n` +
-        `🔗 https://aurastore.ng/checkout\n\n` +
+        `🔗 ${APP_URL}/checkout\n\n` +
         `If you have already paid or transferred, please send your payment reference and our team will confirm it.`;
 
       await sendWhatsAppTextMessage({ toE164: customerPhone, text: paymentText, orderId: pendingOrder.id });
@@ -247,7 +251,7 @@ async function handleCustomerMessage(
         reply += `• *Notes*: ${order.dispatch_notes}\n`;
       }
       reply += `• *Address*: ${order.delivery_address}\n\n`;
-      reply += `🔗 Live Tracking & Receipt:\nhttps://aurastore.ng/track-order?order=${order.order_number}`;
+      reply += `🔗 Live Tracking & Receipt:\n${APP_URL}/track-order?order=${order.order_number}`;
 
       await sendWhatsAppTextMessage({
         toE164: customerPhone,
@@ -279,7 +283,7 @@ async function handleCustomerMessage(
         `• *Total*: ${formatKoboToNaira(latestOrder.total_kobo)}\n` +
         (latestOrder.courier_name ? `• *Courier*: ${latestOrder.courier_name}\n` : "") +
         (latestOrder.tracking_number ? `• *Tracking*: ${latestOrder.tracking_number}\n\n` : "\n") +
-        `🔗 Track details: https://aurastore.ng/track-order?order=${latestOrder.order_number}`;
+        `🔗 Track details: ${APP_URL}/track-order?order=${latestOrder.order_number}`;
 
       await sendWhatsAppTextMessage({ toE164: customerPhone, text: reply, orderId: latestOrder.id });
       return;
