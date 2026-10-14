@@ -4,8 +4,11 @@ import {
   setReviewApproval,
   deleteReview,
 } from "@/lib/reviews";
+import { requireAdmin } from "@/lib/admin-auth";
 
 export async function GET(req: NextRequest) {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
   try {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status") as "all" | "approved" | "pending" | null;
@@ -24,6 +27,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
   try {
     const body = await req.json();
     const { reviewId, isApproved } = body;
@@ -49,6 +54,8 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
   try {
     const { searchParams } = new URL(req.url);
     const reviewId = searchParams.get("id");

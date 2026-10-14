@@ -277,7 +277,22 @@ model AdminUser {
   created_at          DateTime  @default(now())
   updated_at          DateTime  @updatedAt
 
+  sessions            AdminSession[]
+
   @@index([whatsapp_phone_e164])
+}
+
+model AdminSession {
+  id         String    @id @default(cuid())
+  admin_id   String
+  admin      AdminUser @relation(fields: [admin_id], references: [id], onDelete: Cascade)
+  // sha256 of the cookie value, never the value itself: a database leak must not mint sessions.
+  token_hash String    @unique
+  expires_at DateTime
+  created_at DateTime  @default(now())
+
+  @@index([admin_id])
+  @@index([expires_at])
 }
 
 model MessageNotificationLog {

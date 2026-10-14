@@ -1,9 +1,21 @@
 import { PrismaClient } from "@prisma/client";
+import { hashPassword } from "../lib/auth/password";
 
 const prisma = new PrismaClient();
 
+// No default password: a committed one is the first thing anyone tries against the live
+// panel, and this seed is how the first admin account gets created.
+const ADMIN_SEED_EMAIL = process.env.ADMIN_SEED_EMAIL || "admin@store.com";
+const ADMIN_SEED_PASSWORD = process.env.ADMIN_SEED_PASSWORD;
+
 async function main() {
   console.log("Seeding database...");
+
+  if (!ADMIN_SEED_PASSWORD) {
+    throw new Error(
+      "ADMIN_SEED_PASSWORD is not set. Refusing to seed an admin account with a placeholder password."
+    );
+  }
 
   // 1. Create Sectors
   const sectorsData = [
@@ -298,11 +310,11 @@ async function main() {
 
   // 3. Create Default Admin User
   await prisma.adminUser.upsert({
-    where: { email: "admin@store.com" },
+    where: { email: ADMIN_SEED_EMAIL },
     update: {},
     create: {
-      email: "admin@store.com",
-      password_hash: "admin_password_hash_placeholder",
+      email: ADMIN_SEED_EMAIL,
+      password_hash: hashPassword(ADMIN_SEED_PASSWORD),
       role: "owner",
       whatsapp_phone_e164: "+2348000000000",
     },

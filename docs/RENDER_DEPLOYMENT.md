@@ -157,13 +157,15 @@ the difference is paid in failed webhook deliveries on Free.**
 
 ---
 
-## Before you take public payments (unresolved)
+## Before you take public payments
 
-Two things are not deployment configuration and must be closed first:
-
-- **The admin panel is unauthenticated.** `app/admin/page.tsx` and every `app/api/admin/*` route
-  have no login check and there is no `middleware.ts`, while the site footer links to `/admin`.
-  Anyone with the URL can read every order and change any status.
-- **Placeholder contact details are hardcoded.** `wa.me/2348000000000` appears in `app/layout.tsx`
-  and `app/page.tsx`, and `admin@store.com` with a placeholder password hash is the seeded admin in
-  `prisma/seed.ts`.
+- **Admin sign-in must be created before the panel is usable.** Every `app/api/admin/*` route and
+  the panel itself now require a session issued by `/admin/login` (`lib/admin-auth.ts` verifies it,
+  `middleware.ts` gates the paths). There is no built-in account: seed one with
+  `ADMIN_SEED_EMAIL` + `ADMIN_SEED_PASSWORD` set (`npx tsx prisma/seed.ts`), or the seed exits
+  without creating an admin.
+  Treat that password as a bootstrap credential — change or remove it from the environment once
+  the account exists.
+- **Placeholder contact details are still hardcoded.** `wa.me/2348000000000` appears in
+  `app/layout.tsx` and `app/page.tsx`, and `prisma/seed.ts` creates the admin with
+  `whatsapp_phone_e164: "+2348000000000"`.

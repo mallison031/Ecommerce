@@ -4,10 +4,13 @@ import {
   ensureDefaultCampaignSettings,
   generateCampaignDiscountCode,
 } from "@/lib/marketing/campaigns";
+import { requireAdmin } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
   try {
     await ensureDefaultCampaignSettings();
 
@@ -101,6 +104,8 @@ export async function GET() {
 }
 
 export async function PATCH(req: NextRequest) {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
   try {
     const body = await req.json();
     const { id, is_active, delay_days, discount_percentage, channel } = body;
@@ -146,6 +151,8 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
   try {
     const body = await req.json();
     const campaign_type = body.campaign_type || body.type;

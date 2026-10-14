@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { PrismaClient } from "@prisma/client";
+import { hashPassword } from "../lib/auth/password";
 
 const prisma = new PrismaClient();
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
@@ -37,6 +38,46 @@ function customerAuthHeaders(res: Response) {
   };
 }
 
+// Every /api/admin/* route now rejects callers without a session cookie (see lib/admin-auth).
+// The suite signs in through the real login route with a throwaway admin instead of hard-coding
+// credentials; deleting that admin at the end cascades away its sessions.
+let adminSessionCookie = "";
+let throwawayAdminId: string | null = null;
+const adminCredentials = { email: "", password: "" };
+
+async function signInAsAdmin() {
+  const email = `sim_admin_${Date.now()}@example.com`;
+  const password = crypto.randomBytes(16).toString("hex");
+  adminCredentials.email = email;
+  adminCredentials.password = password;
+
+  const admin = await prisma.adminUser.create({
+    data: { email, password_hash: hashPassword(password), role: "owner" },
+  });
+  throwawayAdminId = admin.id;
+
+  const res = await fetch(`${BASE_URL}/api/admin/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
+    throw new Error(`Test admin sign-in failed: HTTP ${res.status} ${await res.text()}`);
+  }
+
+  adminSessionCookie = (res.headers.get("set-cookie") || "").split(";")[0];
+  if (!adminSessionCookie.startsWith("aura_admin_session=")) {
+    throw new Error("Test admin sign-in did not return a session cookie");
+  }
+}
+
+function adminFetch(url: string, init: RequestInit = {}) {
+  return fetch(url, {
+    ...init,
+    headers: { ...(init.headers as Record<string, string>), Cookie: adminSessionCookie },
+  });
+}
+
 async function runTests() {
   console.log("=================================================");
   console.log("🚀 STARTING E-COMMERCE INTEGRATION TEST SUITE");
@@ -68,6 +109,39 @@ async function runTests() {
   }
 
   console.log(`Using product for tests: "${product.name}" (Initial stock: ${product.stock_qty})\n`);
+
+  await signInAsAdmin();
+
+  console.log("--- TEST 0: Admin surface requires a session ---");
+  const anonymousAdminRes = await fetch(`${BASE_URL}/api/admin/orders`);
+  assert(anonymousAdminRes.status === 401, "GET /api/admin/orders without a session returns HTTP 401");
+
+  const unknownEmailRes = await fetch(`${BASE_URL}/api/admin/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: "not-an-admin@example.com", password: "wrong-password" }),
+  });
+  assert(unknownEmailRes.status === 401, "Login for an unknown address returns HTTP 401");
+
+  const wrongPasswordRes = await fetch(`${BASE_URL}/api/admin/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: adminCredentials.email,
+      password: "definitely-not-the-password",
+    }),
+  });
+  assert(wrongPasswordRes.status === 401, "Login with a wrong password returns HTTP 401");
+
+  // Identical wording for both failures is what stops the route from confirming which
+  // addresses have an admin account.
+  const unknownEmailBody = await unknownEmailRes.text();
+  const wrongPasswordBody = await wrongPasswordRes.text();
+  assert(
+    unknownEmailBody === wrongPasswordBody,
+    "Unknown address and wrong password return the same response body"
+  );
+  console.log();
 
   // --- TEST 1: Checkout API & Pending Order Creation ---
   console.log("--- TEST 1: Guest Checkout & Pending Order Creation ---");
@@ -370,13 +444,13 @@ async function runTests() {
 
   // --- TEST 9: Admin Support Ticket Management API ---
   console.log("--- TEST 9: Admin Support Ticket Management API ---");
-  const getTicketsRes = await fetch(`${BASE_URL}/api/admin/tickets`);
+  const getTicketsRes = await adminFetch(`${BASE_URL}/api/admin/tickets`);
   assert(getTicketsRes.status === 200, "Admin tickets endpoint returns HTTP 200");
   const ticketsData = await getTicketsRes.json();
   assert(Array.isArray(ticketsData.tickets) && ticketsData.tickets.length > 0, "Admin tickets endpoint returned tickets array");
 
   if (ticket) {
-    const updateTicketRes = await fetch(`${BASE_URL}/api/admin/tickets`, {
+    const updateTicketRes = await adminFetch(`${BASE_URL}/api/admin/tickets`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ticketId: ticket.id, status: "closed" }),
@@ -445,13 +519,13 @@ async function runTests() {
   });
   assert(recoveryLog !== null, "Abandoned cart sweep logged recovery email in MessageNotificationLog");
 
-  const adminAbandonedGetRes = await fetch(`${BASE_URL}/api/admin/abandoned`);
+  const adminAbandonedGetRes = await adminFetch(`${BASE_URL}/api/admin/abandoned`);
   assert(adminAbandonedGetRes.status === 200, "Admin abandoned GET returns HTTP 200");
   const adminAbandonedData = await adminAbandonedGetRes.json();
   assert(adminAbandonedData.success === true, "Admin abandoned API returns success");
   assert(adminAbandonedData.metrics.remindersSentCount >= 1, "Admin recovery metrics track dispatched reminders");
 
-  const adminTriggerRes = await fetch(`${BASE_URL}/api/admin/abandoned`, {
+  const adminTriggerRes = await adminFetch(`${BASE_URL}/api/admin/abandoned`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ orderId: testOrderId }),
@@ -579,14 +653,14 @@ async function runTests() {
   assert(freeShipCouponData.shippingDiscountKobo === 250000, "FREESHIP waives the full ₦2,500 shipping fee");
 
   // 5. Admin Coupons API & New Coupon Creation
-  const adminCouponsGetRes = await fetch(`${BASE_URL}/api/admin/coupons`);
+  const adminCouponsGetRes = await adminFetch(`${BASE_URL}/api/admin/coupons`);
   assert(adminCouponsGetRes.status === 200, "Admin coupons endpoint returns HTTP 200");
   const adminCouponsGetData = await adminCouponsGetRes.json();
   assert(adminCouponsGetData.success === true, "Admin coupons query succeeds");
   assert(adminCouponsGetData.stats.totalCoupons >= 6, "Admin reports at least 6 configured coupons");
   assert(adminCouponsGetData.flashSales.length >= 1, "Admin reports active sector flash sales");
 
-  const createCouponRes = await fetch(`${BASE_URL}/api/admin/coupons`, {
+  const createCouponRes = await adminFetch(`${BASE_URL}/api/admin/coupons`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -702,10 +776,10 @@ async function runTests() {
   assert(helpfulData.helpfulVotes === 1, "Helpful vote incremented to 1");
 
   // 6. Admin Reviews Moderation API
-  let adminReviewsGetRes = await fetch(`${BASE_URL}/api/admin/reviews`);
+  let adminReviewsGetRes = await adminFetch(`${BASE_URL}/api/admin/reviews`);
   if (!adminReviewsGetRes.ok) {
     await new Promise((r) => setTimeout(r, 500));
-    adminReviewsGetRes = await fetch(`${BASE_URL}/api/admin/reviews`);
+    adminReviewsGetRes = await adminFetch(`${BASE_URL}/api/admin/reviews`);
   }
   assert(adminReviewsGetRes.status === 200, "Admin reviews GET returns HTTP 200");
   const adminReviewsGetData = await adminReviewsGetRes.json();
@@ -714,7 +788,7 @@ async function runTests() {
   assert(adminReviewsGetData.metrics.verifiedCount >= 1, "Admin reviews metrics track verified buyers");
 
   // Moderation status toggle (Hide review)
-  const moderateRes = await fetch(`${BASE_URL}/api/admin/reviews`, {
+  const moderateRes = await adminFetch(`${BASE_URL}/api/admin/reviews`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -770,7 +844,7 @@ async function runTests() {
   console.log("TEST 16: Sales Accounting Ledger, Sector Financial Reporting & Invoicing...");
 
   // 1. Fetch sales endpoint
-  const salesRes = await fetch(`${BASE_URL}/api/admin/sales`);
+  const salesRes = await adminFetch(`${BASE_URL}/api/admin/sales`);
   assert(salesRes.status === 200, "Sales API returns HTTP 200");
   const salesData = await salesRes.json();
   assert(salesData.metrics !== undefined, "Sales response includes comprehensive financial metrics");
@@ -783,13 +857,13 @@ async function runTests() {
   assert(salesData.sectorBreakdown.length === 4, "Sector breakdown covers all 4 store sectors");
 
   // 2. Sector filtering
-  const sectorFilterRes = await fetch(`${BASE_URL}/api/admin/sales?sector=jewelry`);
+  const sectorFilterRes = await adminFetch(`${BASE_URL}/api/admin/sales?sector=jewelry`);
   assert(sectorFilterRes.status === 200, "Sales sector filter returns HTTP 200");
   const sectorFilteredData = await sectorFilterRes.json();
   assert(Array.isArray(sectorFilteredData.orders), "Filtered sector returns orders array");
 
   // 3. Status filtering
-  const statusFilterRes = await fetch(`${BASE_URL}/api/admin/sales?status=paid`);
+  const statusFilterRes = await adminFetch(`${BASE_URL}/api/admin/sales?status=paid`);
   assert(statusFilterRes.status === 200, "Sales status filter returns HTTP 200");
   const statusFilteredData = await statusFilterRes.json();
   assert(
@@ -798,13 +872,13 @@ async function runTests() {
   );
 
   // 4. CSV Exports (Master Sales & Sector Accounting)
-  const masterCsvRes = await fetch(`${BASE_URL}/api/admin/sales?format=csv`);
+  const masterCsvRes = await adminFetch(`${BASE_URL}/api/admin/sales?format=csv`);
   assert(masterCsvRes.status === 200, "Master Sales CSV export returns HTTP 200");
   const masterCsvText = await masterCsvRes.text();
   assert(masterCsvText.includes("Order Number,Date,Customer Name"), "Master CSV contains required bookkeeping headers");
   assert(masterCsvText.includes("Invoice Number,Receipt Number"), "Master CSV includes invoice and receipt document numbers");
 
-  const sectorCsvRes = await fetch(`${BASE_URL}/api/admin/sales?format=sector_csv`);
+  const sectorCsvRes = await adminFetch(`${BASE_URL}/api/admin/sales?format=sector_csv`);
   assert(sectorCsvRes.status === 200, "Sector Accounting CSV export returns HTTP 200");
   const sectorCsvText = await sectorCsvRes.text();
   assert(sectorCsvText.includes("Sector Name,Sector Slug,Units Sold,Revenue (NGN)"), "Sector CSV contains sector accounting headers");
@@ -819,7 +893,7 @@ async function runTests() {
     assert(receiptPdfRes.status === 200, "Official Receipt PDF returns HTTP 200");
     assert(receiptPdfRes.headers.get("content-type") === "application/pdf", "Receipt endpoint returns application/pdf content type");
 
-    const adminInvoiceRes = await fetch(`${BASE_URL}/api/admin/invoices/${paidOrder.id}`);
+    const adminInvoiceRes = await adminFetch(`${BASE_URL}/api/admin/invoices/${paidOrder.id}`);
     assert(adminInvoiceRes.status === 200, "Admin invoice route alias returns HTTP 200");
     assert(adminInvoiceRes.headers.get("content-type") === "application/pdf", "Admin invoice alias returns application/pdf");
   }
@@ -831,7 +905,7 @@ async function runTests() {
   console.log("--- TEST 17: Warehouse Inventory Management, Audit Trail & Restock Portal ---");
 
   // 1. Fetch live inventory dashboard snapshot & warehouse valuation
-  const inventoryRes = await fetch(`${BASE_URL}/api/admin/inventory`);
+  const inventoryRes = await adminFetch(`${BASE_URL}/api/admin/inventory`);
   assert(inventoryRes.status === 200, "Inventory dashboard endpoint returns HTTP 200");
   const invData = await inventoryRes.json();
   assert(Array.isArray(invData.products), "Inventory returns products list");
@@ -844,12 +918,12 @@ async function runTests() {
   assert(typeof invData.metrics.inStockCount === "number", "Healthy in-stock count is numeric");
 
   // 2. Sector & Status Filtering
-  const sectorFilterInvRes = await fetch(`${BASE_URL}/api/admin/inventory?sector=jewelry`);
+  const sectorFilterInvRes = await adminFetch(`${BASE_URL}/api/admin/inventory?sector=jewelry`);
   assert(sectorFilterInvRes.status === 200, "Inventory sector filter returns HTTP 200");
   const sectorFilterInvData = await sectorFilterInvRes.json();
   assert(Array.isArray(sectorFilterInvData.products), "Sector-filtered inventory returns products");
 
-  const lowStockInvRes = await fetch(`${BASE_URL}/api/admin/inventory?status=low_stock`);
+  const lowStockInvRes = await adminFetch(`${BASE_URL}/api/admin/inventory?status=low_stock`);
   assert(lowStockInvRes.status === 200, "Inventory low_stock status filter returns HTTP 200");
   const lowStockInvData = await lowStockInvRes.json();
   assert(
@@ -861,7 +935,7 @@ async function runTests() {
   const targetProduct = invData.products[0];
   const invInitialStock = targetProduct.stock_qty;
 
-  const restockRes = await fetch(`${BASE_URL}/api/admin/inventory/${targetProduct.id}`, {
+  const restockRes = await adminFetch(`${BASE_URL}/api/admin/inventory/${targetProduct.id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -884,7 +958,7 @@ async function runTests() {
   assert(restockData.log.new_stock === invInitialStock + 20, "Audit log records correct new stock");
 
   // 4. Product Audit Trail History GET
-  const productDetailRes = await fetch(`${BASE_URL}/api/admin/inventory/${targetProduct.id}`);
+  const productDetailRes = await adminFetch(`${BASE_URL}/api/admin/inventory/${targetProduct.id}`);
   assert(productDetailRes.status === 200, "Inventory product detail returns HTTP 200");
   const productDetailData = await productDetailRes.json();
   assert(Array.isArray(productDetailData.product.adjustment_logs), "Product details include adjustment audit logs array");
@@ -918,7 +992,7 @@ async function runTests() {
   assert(duplicateWaitlistData.alreadySubscribed === true, "System detects existing waitlist subscriber");
 
   // 6. Revert stock to initial quantity to maintain test idempotency
-  const revertRes = await fetch(`${BASE_URL}/api/admin/inventory/${targetProduct.id}`, {
+  const revertRes = await adminFetch(`${BASE_URL}/api/admin/inventory/${targetProduct.id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1281,14 +1355,14 @@ async function runTests() {
   assert(getRmaDetailsData.return_request.items[0].qty === 1, "Returned qty is 1");
 
   // 6. Admin lists all returns and filters by status
-  const adminReturnsRes = await fetch(`${BASE_URL}/api/admin/returns?status=requested`);
+  const adminReturnsRes = await adminFetch(`${BASE_URL}/api/admin/returns?status=requested`);
   assert(adminReturnsRes.status === 200, "Admin returns listing returns HTTP 200");
   const adminReturnsData = await adminReturnsRes.json();
   assert(adminReturnsData.metrics.requested >= 1, "Admin metrics reflect pending requested RMAs");
   assert(adminReturnsData.returns.some((r: any) => r.id === createdRmaId), "Admin list contains created RMA");
 
   // 7. Admin Approves Return Request
-  const adminApproveRes = await fetch(`${BASE_URL}/api/admin/returns/${createdRmaId}`, {
+  const adminApproveRes = await adminFetch(`${BASE_URL}/api/admin/returns/${createdRmaId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1304,7 +1378,7 @@ async function runTests() {
   assert(adminApproveData.return_request.return_courier === "GIG Logistics", "Return courier assigned");
 
   // 8. Admin marks in transit
-  const adminInTransitRes = await fetch(`${BASE_URL}/api/admin/returns/${createdRmaId}`, {
+  const adminInTransitRes = await adminFetch(`${BASE_URL}/api/admin/returns/${createdRmaId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1319,7 +1393,7 @@ async function runTests() {
   const preRestockProduct = await prisma.product.findUnique({ where: { id: product.id } });
   const preStockQty = preRestockProduct?.stock_qty || 0;
 
-  const adminReceivedRes = await fetch(`${BASE_URL}/api/admin/returns/${createdRmaId}`, {
+  const adminReceivedRes = await adminFetch(`${BASE_URL}/api/admin/returns/${createdRmaId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1343,7 +1417,7 @@ async function runTests() {
   assert(!!stockLog, "StockAdjustmentLog created with reason 'Customer Return Restock'");
 
   // 10. Admin issues Paystack refund
-  const adminRefundRes = await fetch(`${BASE_URL}/api/admin/returns/${createdRmaId}`, {
+  const adminRefundRes = await adminFetch(`${BASE_URL}/api/admin/returns/${createdRmaId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1371,7 +1445,7 @@ async function runTests() {
   const creditRmaId = creditRmaData.return_request.id;
 
   // Process credit refund directly to refunded
-  const adminCreditRefundRes = await fetch(`${BASE_URL}/api/admin/returns/${creditRmaId}`, {
+  const adminCreditRefundRes = await adminFetch(`${BASE_URL}/api/admin/returns/${creditRmaId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1480,7 +1554,7 @@ async function runTests() {
   );
 
   // 2. Manual 1-click admin review request trigger
-  const manualReviewRes = await fetch(
+  const manualReviewRes = await adminFetch(
     `${BASE_URL}/api/admin/orders/${reviewTestOrder.id}/send-review-request`,
     {
       method: "POST",
@@ -1495,7 +1569,7 @@ async function runTests() {
   );
 
   // 3. Admin Live Push Feed
-  const liveFeedRes = await fetch(`${BASE_URL}/api/admin/live-feed`);
+  const liveFeedRes = await adminFetch(`${BASE_URL}/api/admin/live-feed`);
   assert(liveFeedRes.status === 200, "Admin live-feed returns HTTP 200");
   const liveFeedData = await liveFeedRes.json();
   assert(liveFeedData.success === true, "Live feed returns success === true");
@@ -1510,7 +1584,7 @@ async function runTests() {
   assert(Array.isArray(liveFeedData.events), "Live feed returns events array");
 
   // 4. Daily Settlement Reconciliation JSON
-  const settlementJsonRes = await fetch(`${BASE_URL}/api/admin/settlement?date=today&format=json`);
+  const settlementJsonRes = await adminFetch(`${BASE_URL}/api/admin/settlement?date=today&format=json`);
   assert(settlementJsonRes.status === 200, "Settlement API JSON returns HTTP 200");
   const settlementData = await settlementJsonRes.json();
   assert(settlementData.success === true, "Settlement API JSON returns success === true");
@@ -1523,7 +1597,7 @@ async function runTests() {
   );
 
   // 5. Daily Settlement Reconciliation CSV Export
-  const settlementCsvRes = await fetch(`${BASE_URL}/api/admin/settlement?date=today&format=csv`);
+  const settlementCsvRes = await adminFetch(`${BASE_URL}/api/admin/settlement?date=today&format=csv`);
   assert(settlementCsvRes.status === 200, "Settlement CSV export returns HTTP 200");
   const settlementCsvContentType = settlementCsvRes.headers.get("content-type") || "";
   assert(
@@ -1564,7 +1638,7 @@ async function runTests() {
   assert(Array.isArray(bundleRecData.bundleItems), "Bundle returns bundleItems array");
 
   // 2. Admin creates explicit bundle pairing
-  const createBundleRes = await fetch(`${BASE_URL}/api/admin/bundles`, {
+  const createBundleRes = await adminFetch(`${BASE_URL}/api/admin/bundles`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1578,7 +1652,7 @@ async function runTests() {
   const createdBundleId = createBundleData.bundle.id;
 
   // 3. Admin lists all bundles
-  const listBundlesRes = await fetch(`${BASE_URL}/api/admin/bundles`);
+  const listBundlesRes = await adminFetch(`${BASE_URL}/api/admin/bundles`);
   assert(listBundlesRes.status === 200, "Admin list bundles returns HTTP 200");
   const listBundlesData = await listBundlesRes.json();
   assert(
@@ -1587,7 +1661,7 @@ async function runTests() {
   );
 
   // 4. Admin deletes bundle pairing
-  const deleteBundleRes = await fetch(`${BASE_URL}/api/admin/bundles?id=${createdBundleId}`, {
+  const deleteBundleRes = await adminFetch(`${BASE_URL}/api/admin/bundles?id=${createdBundleId}`, {
     method: "DELETE",
   });
   assert(deleteBundleRes.status === 200, "Admin delete bundle returns HTTP 200");
@@ -1689,7 +1763,7 @@ async function runTests() {
   });
 
   // 1. Bulk Status Update: Mark both shipped with Speedaf Express
-  const bulkUpdateRes = await fetch(`${BASE_URL}/api/admin/orders/bulk-status`, {
+  const bulkUpdateRes = await adminFetch(`${BASE_URL}/api/admin/orders/bulk-status`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1709,7 +1783,7 @@ async function runTests() {
   assert(refreshedBulkOrder1?.courier_name === "Speedaf Express", "Bulk order 1 assigned Speedaf Express");
 
   // 2. Dispatch Manifest JSON
-  const manifestJsonRes = await fetch(
+  const manifestJsonRes = await adminFetch(
     `${BASE_URL}/api/admin/orders/manifest?ids=${bulkOrder1.id},${bulkOrder2.id}&format=json`
   );
   assert(manifestJsonRes.status === 200, "Manifest JSON returns HTTP 200");
@@ -1719,7 +1793,7 @@ async function runTests() {
   assert(Array.isArray(manifestJsonData.pickingSummary), "Manifest includes product picking summary");
 
   // 3. Dispatch Manifest Printable HTML
-  const manifestHtmlRes = await fetch(
+  const manifestHtmlRes = await adminFetch(
     `${BASE_URL}/api/admin/orders/manifest?ids=${bulkOrder1.id},${bulkOrder2.id}&format=html`
   );
   assert(manifestHtmlRes.status === 200, "Manifest HTML returns HTTP 200");
@@ -1734,7 +1808,7 @@ async function runTests() {
   );
 
   // 4. Dispatch Manifest CSV
-  const manifestCsvRes = await fetch(
+  const manifestCsvRes = await adminFetch(
     `${BASE_URL}/api/admin/orders/manifest?ids=${bulkOrder1.id},${bulkOrder2.id}&format=csv`
   );
   assert(manifestCsvRes.status === 200, "Manifest CSV returns HTTP 200");
@@ -1767,7 +1841,7 @@ async function runTests() {
   assert(selfReferralRes.status === 400, "Self-referral is rejected with HTTP 400");
 
   // 3. Admin Referrals Metrics
-  const adminReferralsRes = await fetch(`${BASE_URL}/api/admin/referrals`);
+  const adminReferralsRes = await adminFetch(`${BASE_URL}/api/admin/referrals`);
   assert(adminReferralsRes.status === 200, "Admin referrals endpoint returns HTTP 200");
   const adminReferralsData = await adminReferralsRes.json();
   assert(adminReferralsData.success === true, "Admin referrals reports success: true");
@@ -1777,7 +1851,7 @@ async function runTests() {
   // --- TEST 26: Real-Time Admin Notification Center & Sound Alerts (Task 2) ---
   console.log("--- TEST 26: Real-Time Admin Notification Center & Sound Alerts ---");
   // 1. Create notification
-  const createAlertRes = await fetch(`${BASE_URL}/api/admin/notifications`, {
+  const createAlertRes = await adminFetch(`${BASE_URL}/api/admin/notifications`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1794,7 +1868,7 @@ async function runTests() {
   const alertId = createAlertData.notification.id;
 
   // 2. Fetch notifications
-  const getAlertsRes = await fetch(`${BASE_URL}/api/admin/notifications?limit=10`);
+  const getAlertsRes = await adminFetch(`${BASE_URL}/api/admin/notifications?limit=10`);
   assert(getAlertsRes.status === 200, "Get admin notifications returns HTTP 200");
   const getAlertsData = await getAlertsRes.json();
   assert(getAlertsData.success === true, "Get alerts reports success: true");
@@ -1803,7 +1877,7 @@ async function runTests() {
   assert(getAlertsData.liveSummary.openTickets >= 0, "Live summary includes open tickets");
 
   // 3. Mark single notification as read
-  const markReadRes = await fetch(`${BASE_URL}/api/admin/notifications`, {
+  const markReadRes = await adminFetch(`${BASE_URL}/api/admin/notifications`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id: alertId }),
@@ -1811,7 +1885,7 @@ async function runTests() {
   assert(markReadRes.status === 200, "Mark single alert read returns HTTP 200");
 
   // 4. Mark all as read
-  const markAllReadRes = await fetch(`${BASE_URL}/api/admin/notifications`, {
+  const markAllReadRes = await adminFetch(`${BASE_URL}/api/admin/notifications`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ markAll: true }),
@@ -1822,7 +1896,7 @@ async function runTests() {
   // --- TEST 27: Automated Courier Dispatch & Real-Time Tracking Deep-Links (Task 3) ---
   console.log("--- TEST 27: Courier Dispatch & Real-Time Tracking Deep-Links ---");
   // 1. Transition an order to shipped with Courier details
-  const shipCourierRes = await fetch(`${BASE_URL}/api/admin/orders/${bulkOrder1.id}/status`, {
+  const shipCourierRes = await adminFetch(`${BASE_URL}/api/admin/orders/${bulkOrder1.id}/status`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1888,7 +1962,7 @@ async function runTests() {
   assert(badTicketRes.status === 400, "Malformed ticket submission returns HTTP 400");
 
   // 3. Admin Support Desk API: Fetch tickets with metrics & filters
-  const adminTicketsRes = await fetch(`${BASE_URL}/api/admin/tickets?status=open&q=Amaka`);
+  const adminTicketsRes = await adminFetch(`${BASE_URL}/api/admin/tickets?status=open&q=Amaka`);
   assert(adminTicketsRes.status === 200, "Admin tickets endpoint returns HTTP 200");
   const adminTicketsData = await adminTicketsRes.json();
   const counts = adminTicketsData.counts || adminTicketsData.stats;
@@ -1902,7 +1976,7 @@ async function runTests() {
   );
 
   // 4. Update ticket status & admin notes (Escalation)
-  const patchTicketRes = await fetch(`${BASE_URL}/api/admin/tickets`, {
+  const patchTicketRes = await adminFetch(`${BASE_URL}/api/admin/tickets`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2020,7 +2094,7 @@ async function runTests() {
   // 1. Create a Flash Sale via Admin API
   const saleStart = new Date(Date.now() - 60000).toISOString();
   const saleEnd = new Date(Date.now() + 86400000 * 2).toISOString();
-  const createSaleRes = await fetch(`${BASE_URL}/api/admin/flash-sales`, {
+  const createSaleRes = await adminFetch(`${BASE_URL}/api/admin/flash-sales`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2070,7 +2144,7 @@ async function runTests() {
   assert(flashCheckoutData.subtotalKobo === expectedPromoPrice, "Subtotal reflects flash sale discounted price");
 
   // 4. Admin updates / pauses flash sale
-  const pauseSaleRes = await fetch(`${BASE_URL}/api/admin/flash-sales`, {
+  const pauseSaleRes = await adminFetch(`${BASE_URL}/api/admin/flash-sales`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id: createdSaleId, is_active: false }),
@@ -2147,7 +2221,7 @@ async function runTests() {
   assert(redemption!.amount_kobo > 0, "Redemption amount is recorded");
 
   // 6. Admin Gift Cards API metrics
-  const adminGcRes = await fetch(`${BASE_URL}/api/admin/gift-cards`);
+  const adminGcRes = await adminFetch(`${BASE_URL}/api/admin/gift-cards`);
   assert(adminGcRes.status === 200, "GET /api/admin/gift-cards returns HTTP 200");
   const adminGcData = await adminGcRes.json();
   assert(adminGcData.stats.total_cards >= 1, "Admin stats reflect issued gift cards");
@@ -2182,7 +2256,7 @@ async function runTests() {
   assert(Boolean(foundQ), "Submitted question found in PDP questions list");
 
   // 3. Admin Answers the Question
-  const answerRes = await fetch(`${BASE_URL}/api/admin/questions`, {
+  const answerRes = await adminFetch(`${BASE_URL}/api/admin/questions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2267,7 +2341,7 @@ async function runTests() {
   );
 
   // 4. Admin Watchlist Demand Intelligence
-  const adminWatchRes = await fetch(`${BASE_URL}/api/admin/watchlist`);
+  const adminWatchRes = await adminFetch(`${BASE_URL}/api/admin/watchlist`);
   assert(adminWatchRes.status === 200, "GET /api/admin/watchlist returns HTTP 200");
   const adminWatchData = await adminWatchRes.json();
   assert(adminWatchData.success === true, "Admin watchlist returns success: true");
@@ -2542,7 +2616,7 @@ async function runTests() {
   console.log("--- TEST 38: Admin Campaign Automation Studio & Config ---");
 
   // 1. Fetch campaigns and live metrics
-  const adminCampaignsRes = await fetch(`${BASE_URL}/api/admin/marketing-campaigns`);
+  const adminCampaignsRes = await adminFetch(`${BASE_URL}/api/admin/marketing-campaigns`);
   assert(adminCampaignsRes.status === 200, "GET /api/admin/marketing-campaigns returns HTTP 200");
   const adminCampaignsData = await adminCampaignsRes.json();
   assert(adminCampaignsData.success === true, "Campaigns retrieved successfully");
@@ -2555,7 +2629,7 @@ async function runTests() {
   const targetCampaign = adminCampaignsData.campaigns.find((c: any) => c.type === "WIN_BACK_60D");
   assert(targetCampaign !== undefined, "Found WIN_BACK_60D campaign to update");
 
-  const patchCampaignRes = await fetch(`${BASE_URL}/api/admin/marketing-campaigns`, {
+  const patchCampaignRes = await adminFetch(`${BASE_URL}/api/admin/marketing-campaigns`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2573,7 +2647,7 @@ async function runTests() {
   assert(patchCampaignData.campaign.discount_percent === 25, "Discount updated to 25%");
 
   // 3. Dispatch test email preview
-  const previewRes = await fetch(`${BASE_URL}/api/admin/marketing-campaigns`, {
+  const previewRes = await adminFetch(`${BASE_URL}/api/admin/marketing-campaigns`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2743,7 +2817,7 @@ async function runTests() {
   assert(submitData.is_promoter === true, "Rating is categorized as promoter (score 10)");
 
   // 5. Query Admin Feedback & NPS Intelligence API
-  const adminFeedbackRes = await fetch(`${BASE_URL}/api/admin/feedback`);
+  const adminFeedbackRes = await adminFetch(`${BASE_URL}/api/admin/feedback`);
   assert(adminFeedbackRes.status === 200, "GET /api/admin/feedback returns HTTP 200");
   const adminFeedbackData = await adminFeedbackRes.json();
   assert(adminFeedbackData.success === true, "Admin feedback analytics retrieved successfully");
@@ -2759,7 +2833,7 @@ async function runTests() {
   console.log("--- TEST 41: Tiered Volume Pricing & Wholesale Bulk Discount Engine ---");
 
   // 1. Admin creates volume tier for primary test product (Buy 3-5: 10% off)
-  const tier1Res = await fetch(`${BASE_URL}/api/admin/volume-tiers`, {
+  const tier1Res = await adminFetch(`${BASE_URL}/api/admin/volume-tiers`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2775,7 +2849,7 @@ async function runTests() {
   const tier1Id = tier1Data.tier.id;
 
   // 2. Admin creates higher volume tier (Buy 6+: 20% off)
-  const tier2Res = await fetch(`${BASE_URL}/api/admin/volume-tiers`, {
+  const tier2Res = await adminFetch(`${BASE_URL}/api/admin/volume-tiers`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2827,9 +2901,9 @@ async function runTests() {
   );
 
   // 5. Clean up created volume tiers
-  const delTier1 = await fetch(`${BASE_URL}/api/admin/volume-tiers?id=${tier1Id}`, { method: "DELETE" });
+  const delTier1 = await adminFetch(`${BASE_URL}/api/admin/volume-tiers?id=${tier1Id}`, { method: "DELETE" });
   assert(delTier1.status === 200, "DELETE /api/admin/volume-tiers Tier 1 returns HTTP 200");
-  const delTier2 = await fetch(`${BASE_URL}/api/admin/volume-tiers?id=${tier2Id}`, { method: "DELETE" });
+  const delTier2 = await adminFetch(`${BASE_URL}/api/admin/volume-tiers?id=${tier2Id}`, { method: "DELETE" });
   assert(delTier2.status === 200, "DELETE /api/admin/volume-tiers Tier 2 returns HTTP 200");
   console.log();
 
@@ -2849,7 +2923,7 @@ async function runTests() {
   assert(typeof ratesData.rates.EUR === "number", "EUR exchange rate is present");
 
   // 2. Query admin currency settings
-  const adminCurrenciesRes = await fetch(`${BASE_URL}/api/admin/currency-settings`);
+  const adminCurrenciesRes = await adminFetch(`${BASE_URL}/api/admin/currency-settings`);
   assert(adminCurrenciesRes.status === 200, "GET /api/admin/currency-settings returns HTTP 200");
   const adminCurrenciesData = await adminCurrenciesRes.json();
   assert(adminCurrenciesData.success === true, "Admin currency settings retrieved successfully");
@@ -2858,7 +2932,7 @@ async function runTests() {
   // 3. Admin updates USD FX rate
   const originalUsdRate = ratesData.rates.USD;
   const newUsdRate = 1620.5;
-  const updateRateRes = await fetch(`${BASE_URL}/api/admin/currency-settings`, {
+  const updateRateRes = await adminFetch(`${BASE_URL}/api/admin/currency-settings`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2877,7 +2951,7 @@ async function runTests() {
   assert(recheckRatesData.rates.USD === newUsdRate, "Public currency endpoint reflects updated FX rate");
 
   // 5. Restore original USD rate
-  await fetch(`${BASE_URL}/api/admin/currency-settings`, {
+  await adminFetch(`${BASE_URL}/api/admin/currency-settings`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2981,5 +3055,9 @@ runTests()
     process.exit(1);
   })
   .finally(async () => {
+    if (throwawayAdminId) {
+      // Cascade removes the AdminSession rows, so a failed run cannot leave a live cookie behind.
+      await prisma.adminUser.delete({ where: { id: throwawayAdminId } }).catch(() => {});
+    }
     await prisma.$disconnect();
   });

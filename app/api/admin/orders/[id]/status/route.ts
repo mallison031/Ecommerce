@@ -4,11 +4,14 @@ import { notifyOrderStatusChange } from "@/lib/notify";
 import { OrderStatus } from "@prisma/client";
 import { getCourierTrackingUrl } from "@/lib/notifications/courier-tracking";
 import { createAdminAlert } from "@/lib/notifications/admin-alerts";
+import { requireAdmin } from "@/lib/admin-auth";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
   try {
     const { id } = params;
     const body = await req.json();

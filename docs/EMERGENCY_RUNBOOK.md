@@ -28,7 +28,12 @@ curl -I https://aurastore.ng/api/sectors
 curl -s https://aurastore.ng/api/currency/rates
 
 # 3. Check recent admin notifications & critical alarms
-curl -s -H "Cookie: admin_session=..." https://aurastore.ng/api/admin/notifications?limit=10
+# Admin routes now require a signed-in session. Sign in once and reuse the cookie value:
+#   curl -s -c /tmp/admin-cookies.txt -X POST https://aurastore.ng/api/admin/auth/login \
+#        -H "Content-Type: application/json" -d '{"email":"...","password":"..."}'
+#   ADMIN_COOKIE=$(grep aura_admin_session /tmp/admin-cookies.txt | awk '{print $NF}')
+#   curl -s -b /tmp/admin-cookies.txt https://aurastore.ng/api/admin/notifications?limit=10
+curl -s -H "Cookie: aura_admin_session=$ADMIN_COOKIE" https://aurastore.ng/api/admin/notifications?limit=10
 
 # 4. Check active error logs in terminal / hosting dashboard
 tail -n 100 /path/to/logs/app.log | grep -E "ERROR|FATAL|500"
